@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace Domain.Entities
 {
-    public class Chat : BaseEntity
+    public class Chat : BaseChat
     {
-        public string Name { get; set; }
-        public string? Description { get; set; } = null;
-        public ChatMention Mention { get; set; }
-        public List<Member> Members { get; set; }
+        public Guid User1Id { get; set; }
+        public Guid User2Id { get; set; }
+        public User User1 { get; set; }
+        public User User2 { get; set; }
         public List<Message> Messages { get; set; }
     }
 }

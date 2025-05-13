@@ -12,7 +12,7 @@ namespace Domain.Entities
         public Guid ChatId { get; set; }
         public Guid UserId { get; set; }
         public string Text { get; set; } = string.Empty;
-        public Chat Chat { get; set; }
+        public BaseChat Chat { get; set; }
         public User User { get; set; }
     }
 }
