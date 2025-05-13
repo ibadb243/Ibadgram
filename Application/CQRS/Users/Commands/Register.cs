@@ -41,6 +41,7 @@ namespace Application.CQRS.Users.Commands.Register
         private readonly IUserRepository _userRepository;
         private readonly IMentionRepository _mentionRepository;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
+        private readonly IChatRepository _chatRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
@@ -49,6 +50,7 @@ namespace Application.CQRS.Users.Commands.Register
             IUserRepository userRepository,
             IMentionRepository mentionRepository,
             IRefreshTokenRepository refreshTokenRepository,
+            IChatRepository chatRepository,
             IUnitOfWork unitOfWork,
             ITokenService tokenService,
             IPasswordHasher passwordHasher)
@@ -56,6 +58,7 @@ namespace Application.CQRS.Users.Commands.Register
             _userRepository = userRepository;
             _mentionRepository = mentionRepository;
             _refreshTokenRepository = refreshTokenRepository;
+            _chatRepository = chatRepository;
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
@@ -77,6 +80,14 @@ namespace Application.CQRS.Users.Commands.Register
 
             if (await _mentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken) != null)
                 throw new Exception("Shortname already taken");
+
+            var chat = new PersonalChat
+            {
+                UserId = user.Id,
+                User = user,
+            };
+
+            await _chatRepository.AddAsync(chat, cancellationToken);
 
             var mention = new UserMention
             {

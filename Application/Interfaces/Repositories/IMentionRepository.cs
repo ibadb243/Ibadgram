@@ -11,6 +11,7 @@ namespace Application.Interfaces.Repositories
     {
         public Task<Mention> AddAsync(Mention mention, CancellationToken cancellationToken = default);
         public Task<Mention> UpdateAsync(Mention mention, CancellationToken cancellationToken = default);
+        public Task<uint> DeleteAsync(Mention mention, CancellationToken cancellationToken = default);
         public Task<Mention?> GetByShortnameAsync(string shortname, CancellationToken cancellationToken = default);
     }
 }
