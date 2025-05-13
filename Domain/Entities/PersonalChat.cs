@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Domain.Entities
 {
-    public class PersonalChat : BaseChat
+    public class PersonalChat : ChatRoom
     {
         public Guid UserId { get; set; }
         public User User { get; set; }

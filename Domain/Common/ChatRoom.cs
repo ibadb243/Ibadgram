@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Domain.Common
 {
-    public abstract class BaseChat : BaseEntity
+    public abstract class ChatRoom : BaseEntity
     {
     }
 }

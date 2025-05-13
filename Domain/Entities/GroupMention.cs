@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace Domain.Entities
 {
-    public class GroupChatMention : Mention
+    public class GroupMention : Mention
     {
-        public Guid GroupChatId { get; set; }
-        public GroupChat GroupChat { get; set; }
+        public Guid GroupId { get; set; }
+        public Group Group { get; set; }
     }
 }

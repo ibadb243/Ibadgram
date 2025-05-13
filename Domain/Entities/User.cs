@@ -13,7 +13,7 @@ namespace Domain.Entities
         public string Email { get; set; }
         public string PasswordHash { get; set; }
         public UserMention Mention { get; set; }
-        public List<Member> Memberships { get; set; }
+        public List<GroupMember> Memberships { get; set; }
         public List<Message> Messages { get; set; }
         public List<RefreshToken> RefreshTokens { get; set; }
     }

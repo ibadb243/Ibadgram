@@ -8,13 +8,13 @@ using System.Threading.Tasks;
 
 namespace Domain.Entities
 {
-    public class Member : BaseEntity
+    public class GroupMember : BaseEntity
     {
-        public Guid ChatId { get; set; }
+        public Guid GroupId { get; set; }
         public Guid UserId { get; set; }
         public string? Nickname { get; set; } = null;
         public ChatRole Role { get; set; }
-        public Chat Chat { get; set; }
+        public Group Group { get; set; }
         public User User { get; set; }
     }
 }
