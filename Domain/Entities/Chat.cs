@@ -1,4 +1,5 @@
 ﻿using Domain.Common;
+using Domain.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,12 +8,14 @@ using System.Threading.Tasks;
 
 namespace Domain.Entities
 {
-    public class Chat : ChatRoom
+    public class Chat : BaseEntity
     {
-        public Guid User1Id { get; set; }
-        public Guid User2Id { get; set; }
-        public User User1 { get; set; }
-        public User User2 { get; set; }
+        public ChatType Type { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public bool? IsPrivate { get; set; }
+        public ChatMention? Mention { get; set; }
+        public List<ChatMember> Members { get; set; }
         public List<Message> Messages { get; set; }
     }
 }

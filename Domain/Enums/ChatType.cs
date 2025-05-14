@@ -4,9 +4,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Domain.Common
+namespace Domain.Enums
 {
-    public abstract class ChatRoom : BaseEntity
+    public enum ChatType
     {
+        Personal = 1,
+        Chat = 2,
+        Group = 3,
     }
 }
