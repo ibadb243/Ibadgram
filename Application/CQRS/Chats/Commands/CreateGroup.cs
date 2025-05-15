@@ -10,7 +10,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Application.CQRS.Chats.Commands
+namespace Application.CQRS.Chats.Commands.CreateGroup
 {
     public class GroupVm
     {

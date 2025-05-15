@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Application.CQRS.Chats.Commands.Create
+namespace Application.CQRS.Chats.Commands.CreateChat
 {
     public class ChatVm
     {
