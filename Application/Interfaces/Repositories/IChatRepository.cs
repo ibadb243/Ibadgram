@@ -1,4 +1,5 @@
 ﻿using Domain.Common;
+using Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,10 +10,11 @@ namespace Application.Interfaces.Repositories
 {
     public interface IChatRepository
     {
-        public Task<BaseChat> AddAsync(BaseChat chat, CancellationToken cancellationToken = default);
-        public Task<BaseChat> UpdateAsync(BaseChat chat, CancellationToken cancellationToken = default);
-        public Task<uint> DeleteAsync(BaseChat chat, CancellationToken cancellationToken = default);
-        public Task<BaseChat?> GetByIdAsync(Guid Id, CancellationToken cancellationToken = default);
-        public Task<IEnumerable<BaseChat>> GetByNameAsync(string name, CancellationToken cancellationToken = default);
+        public Task<Chat> AddAsync(Chat chat, CancellationToken cancellationToken = default);
+        public Task<Chat> UpdateAsync(Chat chat, CancellationToken cancellationToken = default);
+        public Task<uint> DeleteAsync(Chat chat, CancellationToken cancellationToken = default);
+        public Task<Chat?> GetByIdAsync(Guid Id, CancellationToken cancellationToken = default);
+        public Task<List<Chat>> GetByNameAsync(string name, CancellationToken cancellationToken = default);
+        public Task<Chat?> FindOneToOneChatAsync(Guid userId1, Guid userId2, CancellationToken cancellationToken = default);
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Application.Interfaces.Repositories;
 using Application.Interfaces.Services;
 using Domain.Entities;
+using Domain.Enums;
 using FluentValidation;
 using MediatR;
 using System;
@@ -42,6 +43,7 @@ namespace Application.CQRS.Users.Commands.Register
         private readonly IMentionRepository _mentionRepository;
         private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IChatRepository _chatRepository;
+        private readonly IChatMemberRepository _chatMemberRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
@@ -51,6 +53,7 @@ namespace Application.CQRS.Users.Commands.Register
             IMentionRepository mentionRepository,
             IRefreshTokenRepository refreshTokenRepository,
             IChatRepository chatRepository,
+            IChatMemberRepository chatMemberRepository,
             IUnitOfWork unitOfWork,
             ITokenService tokenService,
             IPasswordHasher passwordHasher)
@@ -59,6 +62,7 @@ namespace Application.CQRS.Users.Commands.Register
             _mentionRepository = mentionRepository;
             _refreshTokenRepository = refreshTokenRepository;
             _chatRepository = chatRepository;
+            _chatMemberRepository = chatMemberRepository;
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
@@ -81,13 +85,22 @@ namespace Application.CQRS.Users.Commands.Register
             if (await _mentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken) != null)
                 throw new Exception("Shortname already taken");
 
-            var chat = new PersonalChat
+            var chat = new Chat
             {
+                Type = ChatType.Personal,
+            };
+
+            await _chatRepository.AddAsync(chat, cancellationToken);
+
+            var member = new ChatMember
+            {
+                ChatId = chat.Id,
+                Chat = chat,
                 UserId = user.Id,
                 User = user,
             };
 
-            await _chatRepository.AddAsync(chat, cancellationToken);
+            await _chatMemberRepository.AddAsync(member, cancellationToken);
 
             var mention = new UserMention
             {
