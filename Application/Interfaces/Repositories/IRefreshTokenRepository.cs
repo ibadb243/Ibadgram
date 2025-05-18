@@ -11,7 +11,7 @@ namespace Application.Interfaces.Repositories
     {
         public Task<RefreshToken> AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default);
         public Task<RefreshToken> UpdateAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default);
-        public Task<uint> DeleteAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default);
+        public Task DeleteAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default);
         public Task<RefreshToken?> GetByTokenAsync(string token, CancellationToken cancellationToken = default);
     }
 }

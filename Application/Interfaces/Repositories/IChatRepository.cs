@@ -12,7 +12,7 @@ namespace Application.Interfaces.Repositories
     {
         public Task<Chat> AddAsync(Chat chat, CancellationToken cancellationToken = default);
         public Task<Chat> UpdateAsync(Chat chat, CancellationToken cancellationToken = default);
-        public Task<uint> DeleteAsync(Chat chat, CancellationToken cancellationToken = default);
+        public Task DeleteAsync(Chat chat, CancellationToken cancellationToken = default);
         public Task<Chat?> GetByIdAsync(Guid Id, CancellationToken cancellationToken = default);
         public Task<List<Chat>> GetByNameAsync(string name, CancellationToken cancellationToken = default);
         public Task<Chat?> FindOneToOneChatAsync(Guid userId1, Guid userId2, CancellationToken cancellationToken = default);

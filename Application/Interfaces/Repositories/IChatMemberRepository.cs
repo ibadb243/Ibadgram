@@ -11,7 +11,7 @@ namespace Application.Interfaces.Repositories
     {
         public Task<ChatMember> AddAsync(ChatMember member, CancellationToken cancellationToken = default);
         public Task<ChatMember> UpdateAsync(ChatMember member, CancellationToken cancellationToken = default);
-        public Task<uint> DeleteAsync(ChatMember member, CancellationToken cancellationToken = default);
+        public Task DeleteAsync(ChatMember member, CancellationToken cancellationToken = default);
         public Task<ChatMember?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
         public Task<ChatMember?> GetByIdsAsync(Guid chatId, Guid userId, CancellationToken cancellationToken = default);
         public Task<List<ChatMember>?> GetByChatIdAsync(Guid chatId, CancellationToken cancellationToken = default);
