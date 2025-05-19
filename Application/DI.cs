@@ -1,4 +1,6 @@
 ﻿using Application.Common.Behaviors;
+using Application.Interfaces.Services;
+using Application.Services;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,10 @@ namespace Application
 
             services.AddValidatorsFromAssemblies(new[] { Assembly.GetExecutingAssembly() });
             services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+
+            services.AddTransient<IPasswordHasher, PasswordHasher>();
+
+            services.AddScoped<ITokenService, TokenService>();
 
             return services;
         }
