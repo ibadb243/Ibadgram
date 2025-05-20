@@ -40,7 +40,7 @@ namespace WebAPI.Controllers
         [HttpGet("{userId:guid}")]
         public async Task<IActionResult> Get(
             CancellationToken cancellationToken,
-            [FromQuery] string userId)
+            [FromRoute] string userId)
         {
             var query = new GetUserQuery
             {

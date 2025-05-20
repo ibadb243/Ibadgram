@@ -31,7 +31,7 @@ namespace Application.Services
                 double.Parse(_configuration["Jwt:AccessTokenExpirationMinutes"] ?? "15"));
 
             _refreshTokenLifetime = TimeSpan.FromDays(
-                double.Parse(_configuration["Jwt:RefreshTokenExpirationDays"] ?? "6"));
+                double.Parse(_configuration["Jwt:RefreshTokenExpirationDays"] ?? "3"));
         }
 
         public string GenerateAccessToken(User user)
