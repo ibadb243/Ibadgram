@@ -28,8 +28,8 @@ namespace Application.CQRS.Users.Commands.UpdateUser
         public UpdateUserCommandValidator()
         {
             RuleFor(x => x.UserId).NotEmpty();
-            RuleFor(x => x.Fullname).NotEmpty();
-            RuleFor(x => x.Shortname).NotEmpty();
+            RuleFor(x => x.Fullname).NotEmpty().MaximumLength(256);
+            RuleFor(x => x.Shortname).NotEmpty().MinimumLength(4).MaximumLength(64);
         }
     }
 
