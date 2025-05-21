@@ -11,13 +11,12 @@ namespace WebAPI.Controllers
     [Authorize]
     [ApiController]
     [Route("api/users/")]
-    public class UserController : ControllerBase
+    public class UserController : BaseController
     {
-        private readonly IMediator _mediator;
-
         public UserController(IMediator mediator)
+            : base(mediator)
         {
-            _mediator = mediator;
+            
         }
 
         [HttpGet("me/")]
@@ -32,7 +31,7 @@ namespace WebAPI.Controllers
                 UserId = Guid.Parse(userId.Value)
             };
 
-            var result = await _mediator.Send(query, cancellationToken);
+            var result = await Mediator.Send(query, cancellationToken);
 
             return Ok(result);
         }
@@ -47,7 +46,7 @@ namespace WebAPI.Controllers
                 UserId = Guid.Parse(userId)
             };
 
-            var result = await _mediator.Send(query, cancellationToken);
+            var result = await Mediator.Send(query, cancellationToken);
 
             return Ok(result);
         }
@@ -64,7 +63,7 @@ namespace WebAPI.Controllers
                 UserId = Guid.Parse(userId.Value)
             };
 
-            var result = await _mediator.Send(query, cancellationToken);
+            var result = await Mediator.Send(query, cancellationToken);
 
             return Ok(result);
         }
@@ -85,7 +84,7 @@ namespace WebAPI.Controllers
                 Shortname = shortname,
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }

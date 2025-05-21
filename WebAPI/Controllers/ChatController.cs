@@ -13,13 +13,12 @@ namespace WebAPI.Controllers
     [Authorize]
     [ApiController]
     [Route("api/chats/")]
-    public class ChatController : ControllerBase
+    public class ChatController : BaseController
     {
-        private readonly IMediator _mediator;
-
         public ChatController(IMediator mediator)
+            : base(mediator)
         {
-            _mediator = mediator;
+            
         }
 
         [HttpGet("{chatId:guid}")]
@@ -36,7 +35,7 @@ namespace WebAPI.Controllers
                 ChatId = chatId
             };
 
-            var result = await _mediator.Send(query, cancellationToken);
+            var result = await Mediator.Send(query, cancellationToken);
 
             return Ok(result);
         }
@@ -63,7 +62,7 @@ namespace WebAPI.Controllers
                 SecondUserId = user_id,
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
@@ -88,7 +87,7 @@ namespace WebAPI.Controllers
                 Shortname = shortname,
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
@@ -115,7 +114,7 @@ namespace WebAPI.Controllers
                 Shortname = shortname,
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
@@ -134,7 +133,7 @@ namespace WebAPI.Controllers
                 GroupId = groupId,
             };
 
-            await _mediator.Send(command, cancellationToken);
+            await Mediator.Send(command, cancellationToken);
 
             return Ok();
         }

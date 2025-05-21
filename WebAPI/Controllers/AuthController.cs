@@ -9,13 +9,12 @@ namespace WebAPI.Controllers
 
     [ApiController]
     [Route("api/auth/")]
-    public class AuthController : ControllerBase
+    public class AuthController : BaseController
     {
-        private readonly IMediator _mediator;
-
         public AuthController(IMediator mediator)
+            : base(mediator)
         {
-            _mediator = mediator;
+
         }
 
         [HttpPost("register/")]
@@ -34,7 +33,7 @@ namespace WebAPI.Controllers
                 Password = password
             };
             
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
@@ -51,7 +50,7 @@ namespace WebAPI.Controllers
                 Password = password
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
@@ -66,7 +65,7 @@ namespace WebAPI.Controllers
                 RefreshToken = refresh_token
             };
 
-            var result = await _mediator.Send(command, cancellationToken);
+            var result = await Mediator.Send(command, cancellationToken);
 
             return Ok(result);
         }
