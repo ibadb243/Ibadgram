@@ -3,6 +3,7 @@ using Application.CQRS.Chats.Commands.CreateGroup;
 using Application.CQRS.Chats.Commands.DeleteGroup;
 using Application.CQRS.Chats.Commands.UpdateGroup;
 using Application.CQRS.Chats.Queries;
+using Application.CQRS.Chats.Queries.GetGroupMembers;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -43,9 +44,20 @@ namespace WebAPI.Controllers
         [HttpGet("{chatId:guid}")]
         public async Task<IActionResult> GetMembers(
             CancellationToken cancellationToken,
-            [FromRoute] Guid chatId)
+            [FromRoute] Guid chatId,
+            [FromQuery] int offset = 0,
+            [FromQuery] int limit = 50)
         {
-            throw new NotImplementedException();
+            var query = new GetGroupMembersQuery
+            {
+                ChatId = chatId,
+                Offset = offset,
+                Limit = limit
+            };
+
+            var result = await Mediator.Send(query, cancellationToken);
+
+            return Ok(result);
         }
 
         [HttpPost]
