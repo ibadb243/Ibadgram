@@ -34,21 +34,15 @@ namespace Application.CQRS.Users.Commands.Login
 
     public class LoginUserCommandHandler : IRequestHandler<LoginUserCommand, TokenResponse>
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
 
         public LoginUserCommandHandler(
-            IUserRepository userRepository,
-            IRefreshTokenRepository refreshTokenRepository,
             IUnitOfWork unitOfWork,
             ITokenService tokenService,
             IPasswordHasher passwordHasher)
         {
-            _userRepository = userRepository;
-            _refreshTokenRepository = refreshTokenRepository;
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
@@ -56,28 +50,39 @@ namespace Application.CQRS.Users.Commands.Login
 
         public async Task<TokenResponse> Handle(LoginUserCommand request, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email, cancellationToken);
-            if (user == null) throw new Exception("Invalid email or password!");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
-                throw new Exception("Invalid email or password!");
-
-            var at = _tokenService.GenerateAccessToken(user);
-
-            var refresh_token = new RefreshToken
+            try
             {
-                UserId = user.Id,
-                AccessToken = at,
-                Token = _tokenService.GenerateRefreshToken(at),
-                ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
-                User = user
-            };
+                var user = await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken);
+                if (user == null) throw new Exception("Invalid email or password!");
 
-            await _refreshTokenRepository.AddAsync(refresh_token, cancellationToken);
+                if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+                    throw new Exception("Invalid email or password!");
 
-            await _unitOfWork.SaveAsync(cancellationToken);
+                var at = _tokenService.GenerateAccessToken(user);
 
-            return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                var refresh_token = new RefreshToken
+                {
+                    UserId = user.Id,
+                    AccessToken = at,
+                    Token = _tokenService.GenerateRefreshToken(at),
+                    ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
+                    User = user
+                };
+
+                await _unitOfWork.RefreshTokenRepository.AddAsync(refresh_token, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }

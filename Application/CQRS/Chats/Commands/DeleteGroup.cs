@@ -27,46 +27,46 @@ namespace Application.CQRS.Chats.Commands.DeleteGroup
 
     public class DeleteGroupCommandHandler : IRequestHandler<DeleteGroupCommand, Unit>
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IChatRepository _chatRepository;
-        private readonly IChatMemberRepository _chatMemberRepository;
-        private readonly IMentionRepository _mentionRepository;
         private readonly IUnitOfWork _unitOfWork;
 
         public DeleteGroupCommandHandler(
-            IUserRepository userRepository,
-            IChatRepository chatRepository,
-            IChatMemberRepository chatMemberRepository,
-            IMentionRepository mentionRepository,
             IUnitOfWork unitOfWork)
         {
-            _userRepository = userRepository;
-            _chatRepository = chatRepository;
-            _chatMemberRepository = chatMemberRepository;
-            _mentionRepository = mentionRepository;
             _unitOfWork = unitOfWork;
         }
 
         public async Task<Unit> Handle(DeleteGroupCommand request, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
-            if (user == null) throw new Exception("User not found");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            var group = await _chatRepository.GetByIdAsync(request.GroupId, cancellationToken);
-            if (group == null) throw new Exception("Group not found");
+            try
+            {
+                var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
+                if (user == null) throw new Exception("User not found");
 
-            var member = await _chatMemberRepository.GetByIdsAsync(group.Id, user.Id, cancellationToken);
-            if (member == null) throw new Exception("You are member of group");
+                var group = await _unitOfWork.ChatRepository.GetByIdAsync(request.GroupId, cancellationToken);
+                if (group == null) throw new Exception("Group not found");
 
-            if (member.Role != ChatRole.Creator) throw new Exception("You are not creator of group");
+                var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(group.Id, user.Id, cancellationToken);
+                if (member == null) throw new Exception("You are member of group");
 
-            await _chatRepository.DeleteAsync(group, cancellationToken);
+                if (member.Role != ChatRole.Creator) throw new Exception("You are not creator of group");
 
-            if (!group.IsPrivate.Value) await _mentionRepository.DeleteAsync(group.Mention);
+                await _unitOfWork.ChatRepository.DeleteAsync(group, cancellationToken);
 
-            await _unitOfWork.SaveAsync(cancellationToken);
+                if (!group.IsPrivate.Value) await _unitOfWork.MentionRepository.DeleteAsync(group.Mention);
 
-            return Unit.Value;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return Unit.Value;
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }

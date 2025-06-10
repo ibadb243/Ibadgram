@@ -35,53 +35,58 @@ namespace Application.CQRS.Users.Commands.UpdateUser
 
     public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserVm>
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IMentionRepository _mentionRepository;
         private readonly IUnitOfWork _unitOfWork;
 
         public UpdateUserCommandHandler(
-            IUserRepository userRepository,
-            IMentionRepository mentionRepository,
             IUnitOfWork unitOfWork)
         {
-            _userRepository = userRepository;
-            _mentionRepository = mentionRepository;
             _unitOfWork = unitOfWork;
         }
 
         public async Task<UserVm> Handle(UpdateUserCommand request, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
-            if (user == null) throw new Exception("User not found");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            user.Fullname = request.Fullname;
-
-            if (user.Mention.Shortname != request.Shortname)
+            try
             {
-                var mention = await _mentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken);
-                if (mention != null) throw new Exception("Shortname had taken");
+                var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
+                if (user == null) throw new Exception("User not found");
 
-                await _mentionRepository.DeleteAsync(user.Mention, cancellationToken);
+                user.Fullname = request.Fullname;
 
-                mention = new UserMention
+                if (user.Mention.Shortname != request.Shortname)
                 {
+                    var mention = await _unitOfWork.MentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken);
+                    if (mention != null) throw new Exception("Shortname had taken");
+
+                    await _unitOfWork.MentionRepository.DeleteAsync(user.Mention, cancellationToken);
+
+                    mention = new UserMention
+                    {
+                        Shortname = request.Shortname,
+                        UserId = user.Id,
+                        User = user,
+                    };
+
+                    await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
+                }
+
+                await _unitOfWork.UserRepository.UpdateAsync(user, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return new UserVm
+                {
+                    Fullname = request.Fullname,
                     Shortname = request.Shortname,
-                    UserId = user.Id,
-                    User = user,
                 };
-
-                await _mentionRepository.AddAsync(mention, cancellationToken);
             }
-
-            await _userRepository.UpdateAsync(user, cancellationToken);
-
-            await _unitOfWork.SaveAsync(cancellationToken);
-
-            return new UserVm
+            catch
             {
-                Fullname = request.Fullname,
-                Shortname = request.Shortname,
-            };
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }

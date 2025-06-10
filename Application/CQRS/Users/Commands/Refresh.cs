@@ -32,43 +32,51 @@ namespace Application.CQRS.Users.Commands.Refresh
 
     public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, TokenResponse>
     {
-        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
 
         public RefreshTokenCommandHandler(
-            IRefreshTokenRepository refreshTokenRepository,
             IUnitOfWork unitOfWork,
             ITokenService tokenService)
         {
-            _refreshTokenRepository = refreshTokenRepository;
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
         }
 
         public async Task<TokenResponse> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
         {
-            var refresh_token = await _refreshTokenRepository.GetByTokenAsync(request.RefreshToken, cancellationToken);
-            if (refresh_token == null)
-                throw new Exception("Invalid refresh token");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            if (refresh_token.User == null)
-                throw new Exception("User not found");
+            try
+            {
+                var refresh_token = await _unitOfWork.RefreshTokenRepository.GetByTokenAsync(request.RefreshToken, cancellationToken);
+                if (refresh_token == null)
+                    throw new Exception("Invalid refresh token");
 
-            if (DateTime.UtcNow > refresh_token.ExpiresAtUtc)
-                throw new Exception("Refresh token expired");
+                if (refresh_token.User == null)
+                    throw new Exception("User not found");
 
-            var at = _tokenService.GenerateAccessToken(refresh_token.User);
+                if (DateTime.UtcNow > refresh_token.ExpiresAtUtc)
+                    throw new Exception("Refresh token expired");
 
-            refresh_token.AccessToken = at;
-            refresh_token.Token = _tokenService.GenerateRefreshToken(at);
-            refresh_token.ExpiresAtUtc = DateTime.UtcNow.AddDays(6);
+                var at = _tokenService.GenerateAccessToken(refresh_token.User);
 
-            await _refreshTokenRepository.UpdateAsync(refresh_token, cancellationToken);
+                refresh_token.AccessToken = at;
+                refresh_token.Token = _tokenService.GenerateRefreshToken(at);
+                refresh_token.ExpiresAtUtc = DateTime.UtcNow.AddDays(6);
 
-            await _unitOfWork.SaveAsync(cancellationToken);
+                await _unitOfWork.RefreshTokenRepository.UpdateAsync(refresh_token, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }

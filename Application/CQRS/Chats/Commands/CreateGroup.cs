@@ -46,78 +46,77 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
 
     public class CreateGroupCommandHandler : IRequestHandler<CreateGroupCommand, GroupVm>
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IChatRepository _chatRepository;
-        private readonly IMentionRepository _mentionRepository;
-        private readonly IChatMemberRepository _chatMemberRepository;
         private readonly IUnitOfWork _unitOfWork;
 
         public CreateGroupCommandHandler(
-            IUserRepository userRepository,
-            IChatRepository chatRepository,
-            IMentionRepository mentionRepository,
-            IChatMemberRepository chatMemberRepository,
             IUnitOfWork unitOfWork)
         {
-            _userRepository = userRepository;
-            _chatRepository = chatRepository;
-            _mentionRepository = mentionRepository;
-            _chatMemberRepository = chatMemberRepository;
             _unitOfWork = unitOfWork;
         }
 
         public async Task<GroupVm> Handle(CreateGroupCommand request, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
-            if (user == null) throw new Exception("User not found");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            Chat group = new Chat
+            try
             {
-                Type = ChatType.Group,
-                Name = request.Name,
-                Description = request.Description,
-                IsPrivate = request.IsPrivate,
-            };
+                var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
+                if (user == null) throw new Exception("User not found");
 
-            await _chatRepository.AddAsync(group, cancellationToken);
-
-            if (!request.IsPrivate)
-            {
-                var mention = await _mentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken);
-                if (mention != null) throw new Exception("Shortname had taken");
-
-                mention = new ChatMention
+                Chat group = new Chat
                 {
-                    Shortname = request.Shortname,
-                    ChatId = group.Id,
-                    Chat = group,
+                    Type = ChatType.Group,
+                    Name = request.Name,
+                    Description = request.Description,
+                    IsPrivate = request.IsPrivate,
                 };
 
-                await _mentionRepository.AddAsync(mention, cancellationToken);
+                await _unitOfWork.ChatRepository.AddAsync(group, cancellationToken);
+
+                if (!request.IsPrivate)
+                {
+                    var mention = await _unitOfWork.MentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken);
+                    if (mention != null) throw new Exception("Shortname had taken");
+
+                    mention = new ChatMention
+                    {
+                        Shortname = request.Shortname,
+                        ChatId = group.Id,
+                        Chat = group,
+                    };
+
+                    await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
+                }
+
+                var member = new ChatMember
+                {
+                    ChatId = group.Id,
+                    UserId = user.Id,
+                    Nickname = "Creator",
+                    Role = ChatRole.Creator,
+                    Chat = group,
+                    User = user,
+                };
+
+                await _unitOfWork.ChatMemberRepository.AddAsync(member, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return new GroupVm
+                {
+                    GroupId = group.Id,
+                    Name = request.Name,
+                    Description = request.Description,
+                    Shortname = request.IsPrivate ? null : request.Shortname,
+                    CreatedAtUtc = group.CreatedAtUtc,
+                };
             }
-
-            var member = new ChatMember
+            catch 
             {
-                ChatId = group.Id,
-                UserId = user.Id,
-                Nickname = "Creator",
-                Role = ChatRole.Creator,
-                Chat = group,
-                User = user,
-            };
-
-            await _chatMemberRepository.AddAsync(member, cancellationToken);
-
-            await _unitOfWork.SaveAsync(cancellationToken);
-
-            return new GroupVm
-            {
-                GroupId = group.Id,
-                Name = request.Name,
-                Description = request.Description,
-                Shortname = request.IsPrivate ? null : request.Shortname,
-                CreatedAtUtc = group.CreatedAtUtc,
-            };
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }

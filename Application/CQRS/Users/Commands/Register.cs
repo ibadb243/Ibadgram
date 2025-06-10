@@ -39,30 +39,15 @@ namespace Application.CQRS.Users.Commands.Register
 
     public class RegisterUserCommandHandler : IRequestHandler<RegisterUserCommand, TokenResponse>
     {
-        private readonly IUserRepository _userRepository;
-        private readonly IMentionRepository _mentionRepository;
-        private readonly IRefreshTokenRepository _refreshTokenRepository;
-        private readonly IChatRepository _chatRepository;
-        private readonly IChatMemberRepository _chatMemberRepository;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
 
         public RegisterUserCommandHandler(
-            IUserRepository userRepository,
-            IMentionRepository mentionRepository,
-            IRefreshTokenRepository refreshTokenRepository,
-            IChatRepository chatRepository,
-            IChatMemberRepository chatMemberRepository,
             IUnitOfWork unitOfWork,
             ITokenService tokenService,
             IPasswordHasher passwordHasher)
         {
-            _userRepository = userRepository;
-            _mentionRepository = mentionRepository;
-            _refreshTokenRepository = refreshTokenRepository;
-            _chatRepository = chatRepository;
-            _chatMemberRepository = chatMemberRepository;
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
@@ -70,63 +55,75 @@ namespace Application.CQRS.Users.Commands.Register
 
         public async Task<TokenResponse> Handle(RegisterUserCommand request, CancellationToken cancellationToken)
         {
-            if (await _userRepository.GetByEmailAsync(request.Email, cancellationToken) != null)
-                throw new Exception("Email already uses");
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-            var user = new User
+            try
             {
-                Fullname = request.Fullname,
-                Email = request.Email,
-                PasswordHash = _passwordHasher.HashPassword(request.Password),
-            };
+                if (await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken) != null)
+                    throw new Exception("Email already uses");
 
-            await _userRepository.AddAsync(user, cancellationToken);
+                var user = new User
+                {
+                    Fullname = request.Fullname,
+                    Email = request.Email,
+                    PasswordHash = _passwordHasher.HashPassword(request.Password),
+                };
 
-            if (await _mentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken) != null)
-                throw new Exception("Shortname already taken");
+                await _unitOfWork.UserRepository.AddAsync(user, cancellationToken);
 
-            var chat = new Chat
+                if (await _unitOfWork.MentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken) != null)
+                    throw new Exception("Shortname already taken");
+
+                var chat = new Chat
+                {
+                    Type = ChatType.Personal,
+                };
+
+                await _unitOfWork.ChatRepository.AddAsync(chat, cancellationToken);
+
+                var member = new ChatMember
+                {
+                    ChatId = chat.Id,
+                    Chat = chat,
+                    UserId = user.Id,
+                    User = user,
+                };
+
+                await _unitOfWork.ChatMemberRepository.AddAsync(member, cancellationToken);
+
+                var mention = new UserMention
+                {
+                    Shortname = request.Shortname,
+                    UserId = user.Id,
+                    User = user,
+                };
+                user.Mention = mention;
+
+                await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
+
+                var at = _tokenService.GenerateAccessToken(user);
+
+                var refresh_token = new RefreshToken
+                {
+                    UserId = user.Id,
+                    AccessToken = at,
+                    Token = _tokenService.GenerateRefreshToken(at),
+                    ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
+                    User = user
+                };
+
+                await _unitOfWork.RefreshTokenRepository.AddAsync(refresh_token, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+            }
+            catch
             {
-                Type = ChatType.Personal,
-            };
-
-            await _chatRepository.AddAsync(chat, cancellationToken);
-
-            var member = new ChatMember
-            {
-                ChatId = chat.Id,
-                Chat = chat,
-                UserId = user.Id,
-                User = user,
-            };
-
-            await _chatMemberRepository.AddAsync(member, cancellationToken);
-
-            var mention = new UserMention
-            {
-                Shortname = request.Shortname,
-                UserId = user.Id,
-                User = user,
-            };
-            user.Mention = mention;
-
-            await _mentionRepository.AddAsync(mention, cancellationToken);
-
-            var at = _tokenService.GenerateAccessToken(user);
-
-            var refresh_token = new RefreshToken
-            {
-                UserId = user.Id,
-                AccessToken = at,
-                Token = _tokenService.GenerateRefreshToken(at),
-                ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
-                User = user
-            };
-
-            await _refreshTokenRepository.AddAsync(refresh_token, cancellationToken);
-            await _unitOfWork.SaveAsync(cancellationToken);
-
-            return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                throw;
+            }
         }
     }
 }
