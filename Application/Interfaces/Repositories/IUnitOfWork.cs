@@ -14,6 +14,7 @@ namespace Application.Interfaces.Repositories
         IUserMentionRepository UserMentionRepository { get; }
         IChatRepository ChatRepository { get; }
         IChatMemberRepository ChatMemberRepository { get; }
+        IMessageRepository MessageRepository { get; }
 
         Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
         Task BeginTransactionAsync(CancellationToken cancellationToken = default);
