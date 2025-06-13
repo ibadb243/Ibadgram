@@ -13,12 +13,12 @@
 
     public static class EmailConstants
     {
-        public readonly static string[] AllowedEmails = new[]
+        public readonly static string[] AllowedDomains = new[]
         {
-            "*@gmail.com",
-            "*@yahoo.com",
-            "*@yandex.ru",
-            "*@mail.ru",
+            "gmail.com",
+            "yahoo.com",
+            "yandex.ru",
+            "mail.ru",
         };
     }
 
