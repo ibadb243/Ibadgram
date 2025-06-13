@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Domain.Common
+﻿namespace Domain.Common
 {
-    public abstract class Mention : BaseEntity
+    public abstract class Mention
     {
+        public Guid Id { get; set; }
         public string Shortname { get; set; } = string.Empty;
     }
 }
