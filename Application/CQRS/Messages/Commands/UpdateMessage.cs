@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common.Constants;
 using FluentValidation;
 using MediatR;
 using System;
@@ -13,7 +14,7 @@ namespace Application.CQRS.Messages.Commands.UpdateMessage
     {
         public Guid UserId { get; set; }
         public Guid ChatId { get; set; }
-        public Guid MessageId { get; set; }
+        public long MessageId { get; set; }
         public string Message { get; set; }
     }
 
@@ -21,10 +22,19 @@ namespace Application.CQRS.Messages.Commands.UpdateMessage
     {
         public UpdateMessageCommandValidator()
         {
-            RuleFor(x => x.UserId).NotEmpty();
-            RuleFor(x => x.ChatId).NotEmpty();
-            RuleFor(x => x.MessageId).NotEmpty();
-            RuleFor(x => x.Message).NotEmpty().MinimumLength(1);
+            RuleFor(x => x.UserId)
+                .NotEmpty();
+
+            RuleFor(x => x.ChatId)
+                .NotEmpty();
+
+            RuleFor(x => x.MessageId)
+                .NotEmpty();
+
+            RuleFor(x => x.Message)
+                .NotEmpty()
+                .MinimumLength(MessageConstants.MinLength)
+                .MaximumLength(MessageConstants.MaxLength);
         }
     }
 
@@ -53,7 +63,7 @@ namespace Application.CQRS.Messages.Commands.UpdateMessage
                 var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(request.ChatId, request.UserId, cancellationToken);
                 if (member == null) throw new Exception("Yoe are not member of chat");
 
-                var message = await _unitOfWork.MessageRepository.GetByIdAsync(request.MessageId, cancellationToken);
+                var message = await _unitOfWork.MessageRepository.GetByIdAsync(request.ChatId, request.MessageId, cancellationToken);
                 if (message == null) throw new Exception("Message not found");
 
                 if (message.UserId != request.UserId) throw new Exception("User can edit only own messages");

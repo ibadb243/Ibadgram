@@ -38,6 +38,7 @@
 
     public static class MessageConstants
     {
+        public const int MinLength = 1;
         public const int MaxLength = 1024;
     }
 }

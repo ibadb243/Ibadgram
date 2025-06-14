@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common.Constants;
 using Domain.Entities;
 using FluentValidation;
 using MediatR;
@@ -10,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Messages.Commands.SendMessage
 {
-    public class SendMessageCommand : IRequest<Guid>
+    public class SendMessageCommand : IRequest<long>
     {
         public Guid UserId { get; set; }
         public Guid ChatId { get; set; }
@@ -21,13 +22,20 @@ namespace Application.CQRS.Messages.Commands.SendMessage
     {
         public SendMessageCommandValidator()
         {
-            RuleFor(x => x.UserId).NotEmpty();
-            RuleFor(x => x.ChatId).NotEmpty();
-            RuleFor(x => x.Message).NotEmpty().MinimumLength(1);
+            RuleFor(x => x.UserId)
+                .NotEmpty();
+
+            RuleFor(x => x.ChatId)
+                .NotEmpty();
+
+            RuleFor(x => x.Message)
+                .NotEmpty()
+                .MinimumLength(MessageConstants.MinLength)
+                .MaximumLength(MessageConstants.MaxLength);
         }
     }
 
-    public class SendMessageCommandHandler : IRequestHandler<SendMessageCommand, Guid>
+    public class SendMessageCommandHandler : IRequestHandler<SendMessageCommand, long>
     {
         private readonly IUnitOfWork _unitOfWork;
 
@@ -37,7 +45,7 @@ namespace Application.CQRS.Messages.Commands.SendMessage
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<Guid> Handle(SendMessageCommand request, CancellationToken cancellationToken)
+        public async Task<long> Handle(SendMessageCommand request, CancellationToken cancellationToken)
         {
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
