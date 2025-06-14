@@ -1,5 +1,6 @@
 ﻿using Application.Interfaces.Repositories;
 using Domain.Common;
+using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Enums;
 using FluentValidation;
@@ -35,13 +36,26 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
     {
         public UpdateGroupCommandValidator()
         {
-            RuleFor(x => x.UserId).NotEmpty();
-            RuleFor(x => x.GroupId).NotEmpty();
-            RuleFor(x => x.Name).NotEmpty().MinimumLength(1).MaximumLength(256);
-            RuleFor(x => x.Description).MaximumLength(2048);
-            When(x => x.IsPrivate, () =>
+            RuleFor(x => x.UserId)
+                .NotEmpty();
+
+            RuleFor(x => x.GroupId)
+                .NotEmpty();
+
+            RuleFor(x => x.Name)
+                .NotEmpty()
+                .MinimumLength(ChatConstants.NameMinLength)
+                .MaximumLength(ChatConstants.NameMaxLength);
+
+            RuleFor(x => x.Description)
+                .MaximumLength(ChatConstants.DescriptionLength);
+
+            When(x => !x.IsPrivate, () =>
             {
-                RuleFor(x => x.Shortname).NotEmpty().MinimumLength(4).MaximumLength(64);
+                RuleFor(x => x.Shortname)
+                    .NotEmpty()
+                    .MinimumLength(ShortnameConstants.MinLength)
+                    .MaximumLength(ShortnameConstants.MaxLength);
             });
         }
     }

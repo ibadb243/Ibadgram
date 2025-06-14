@@ -12,7 +12,8 @@ namespace Application.CQRS.Chats.Queries.GetGroupMembers
 {
     public class MemberLoopup
     {
-        public string Fullname { get; set; }
+        public string Firstname { get; set; }
+        public string? Lastname { get; set; }
         public ChatRole Role { get; set; }
         public string? Nickname { get; set; }
     }
@@ -70,7 +71,8 @@ namespace Application.CQRS.Chats.Queries.GetGroupMembers
                 .Take(request.Limit)
                 .Select(m => new MemberLoopup
                 {
-                    Fullname = m.User.Fullname,
+                    Firstname = m.User.Firstname,
+                    Lastname = m.User.Lastname,
                     Nickname = m.Nickname,
                     Role = m.Role ?? ChatRole.Member,
                 })

@@ -23,7 +23,8 @@ namespace Application.CQRS.Chats.Queries
 
     public class OneToOneChatVm : ChatVm
     {
-        public string Fullname { get; set; }
+        public string Firstname { get; set; }
+        public string? Lastname { get; set; }
         public string Description { get; set; }
         public string Shortname { get; set; }
     }
@@ -76,7 +77,7 @@ namespace Application.CQRS.Chats.Queries
             var chat = await _chatRepository.GetByIdAsync(request.ChatId, cancellationToken);
             if (chat == null) throw new Exception("Chat not found");
 
-            if (chat.DeletedAtUtc != null) return new ChatVm { IsDeleted = true };
+            if (chat.IsDeleted) return new ChatVm { IsDeleted = true };
 
             if (chat.Type != ChatType.Group)
             {
@@ -91,11 +92,12 @@ namespace Application.CQRS.Chats.Queries
                     {
                         var other = chat.Members.FirstOrDefault(m => m.UserId != user.Id);
                         if (other == null) throw new Exception("Hackers atack");
-                        if (other.User.DeletedAtUtc != null) return new ChatVm { IsDeleted = true };
+                        if (other.User.IsDeleted) return new ChatVm { IsDeleted = true };
 
                         return new OneToOneChatVm
                         {
-                            Fullname = other.User.Fullname,
+                            Firstname = other.User.Firstname,
+                            Lastname = other.User.Lastname,
                             Description = "Not yet",
                             Shortname = other.User.Mention.Shortname,
                         };
