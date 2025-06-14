@@ -10,6 +10,6 @@ namespace Application.Interfaces.Services
     public interface ITokenService
     {
         string GenerateAccessToken(User user);
-        string GenerateRefreshToken(string access_token);
+        RefreshToken GenerateRefreshToken(User user, string accessToken);
     }
 }

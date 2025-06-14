@@ -39,7 +39,8 @@ namespace Application.Services
             var claims = new List<Claim>()
             {
                 new(JwtRegisteredClaimNames.Sid, user.Id.ToString()),
-                new(JwtRegisteredClaimNames.Name, user.Fullname),
+                new(JwtRegisteredClaimNames.Name, user.Firstname),
+                new(JwtRegisteredClaimNames.FamilyName, user.Lastname),
                 new(JwtRegisteredClaimNames.UniqueName, user.Mention.Shortname),
             };
 
@@ -55,17 +56,21 @@ namespace Application.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        public string GenerateRefreshToken(string access_token)
+        public RefreshToken GenerateRefreshToken(User user, string accessToken)
         {
             var randomNumber = new byte[64];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(randomNumber);
 
-            // Optionally link refresh token to access token
-            var jwtToken = new JwtSecurityTokenHandler().ReadJwtToken(access_token);
-            var jti = jwtToken.Claims.First(claim => claim.Type == JwtRegisteredClaimNames.Jti).Value;
-
-            return Convert.ToHexString(randomNumber);
+            return new RefreshToken
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Token = Convert.ToHexString(randomNumber),
+                CreatedAtUtc = DateTime.UtcNow,
+                ExpiresAtUtc = DateTime.UtcNow.Add(_refreshTokenLifetime),
+                User = user
+            };
         }
     }
 }
