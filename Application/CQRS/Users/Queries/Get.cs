@@ -12,7 +12,8 @@ namespace Application.CQRS.Users.Queries.Get
 {
     public class UserVm
     {
-        public string Fullname { get; set; }
+        public string Firstname { get; set; }
+        public string Lastname { get; set; }
         public string Shortname { get; set; }
         public bool? IsDeleted { get; set; }
     }
@@ -44,11 +45,12 @@ namespace Application.CQRS.Users.Queries.Get
             var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
             if (user == null) throw new Exception("User not found");
 
-            if (user.DeletedAtUtc != null) return new UserVm { IsDeleted = true };
+            if (user.IsDeleted) return new UserVm { IsDeleted = true };
 
             return new UserVm
             {
-                Fullname = user.Fullname,
+                Firstname = user.Firstname,
+                Lastname = user.Lastname,
                 Shortname = user.Mention.Shortname,
             };
         }

@@ -1,5 +1,6 @@
 ﻿using Application.Interfaces.Repositories;
 using Application.Interfaces.Services;
+using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Enums;
 using FluentValidation;
@@ -8,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.Register
@@ -20,7 +22,8 @@ namespace Application.CQRS.Users.Commands.Register
 
     public class RegisterUserCommand : IRequest<TokenResponse>
     {
-        public string? Fullname { get; set; }
+        public string? Firstname { get; set; }
+        public string? Lastname { get; set; }
         public string? Shortname { get; set; }
         public string? Email { get; set; }
         public string? Password { get; set; }
@@ -30,10 +33,33 @@ namespace Application.CQRS.Users.Commands.Register
     {
         public RegisterUserCommandValidator()
         {
-            RuleFor(x => x.Fullname).NotEmpty().MaximumLength(256);
-            RuleFor(x => x.Shortname).NotEmpty().MinimumLength(4).MaximumLength(64);
-            RuleFor(x => x.Email).NotEmpty().EmailAddress();
+            RuleFor(x => x.Firstname)
+                .NotEmpty()
+                .MinimumLength(UserConstants.FirstnameMinLength)
+                .MaximumLength(UserConstants.FirstnameMaxLength);
+
+            RuleFor(x => x.Lastname)
+                .MaximumLength(UserConstants.LastnameLength);
+
+            RuleFor(x => x.Shortname)
+                .NotEmpty()
+                .MinimumLength(4)
+                .MaximumLength(64);
+
+            RuleFor(x => x.Email)
+                .NotEmpty()
+                .EmailAddress()
+                .Matches(BuildEmailPattern())
+                .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
+
             RuleFor(x => x.Password).NotEmpty().MinimumLength(8).MaximumLength(64);
+
+        }
+
+        private string BuildEmailPattern()
+        {
+            var escapedDomains = EmailConstants.AllowedDomains.Select(d => d.Replace(".", @"\."));
+            return $@"^.*@({string.Join("|", escapedDomains)})$";
         }
     }
 
@@ -64,7 +90,9 @@ namespace Application.CQRS.Users.Commands.Register
 
                 var user = new User
                 {
-                    Fullname = request.Fullname,
+                    Id = Guid.NewGuid(),
+                    Firstname = request.Firstname,
+                    Lastname = request.Lastname,
                     Email = request.Email,
                     PasswordHash = _passwordHasher.HashPassword(request.Password),
                 };
@@ -76,6 +104,7 @@ namespace Application.CQRS.Users.Commands.Register
 
                 var chat = new Chat
                 {
+                    Id= Guid.NewGuid(),
                     Type = ChatType.Personal,
                 };
 
@@ -93,6 +122,7 @@ namespace Application.CQRS.Users.Commands.Register
 
                 var mention = new UserMention
                 {
+                    Id = Guid.NewGuid(),
                     Shortname = request.Shortname,
                     UserId = user.Id,
                     User = user,
@@ -101,23 +131,15 @@ namespace Application.CQRS.Users.Commands.Register
 
                 await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
 
-                var at = _tokenService.GenerateAccessToken(user);
+                var accessTokem = _tokenService.GenerateAccessToken(user);
+                var refresToken = _tokenService.GenerateRefreshToken(user, accessTokem);
 
-                var refresh_token = new RefreshToken
-                {
-                    UserId = user.Id,
-                    AccessToken = at,
-                    Token = _tokenService.GenerateRefreshToken(at),
-                    ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
-                    User = user
-                };
-
-                await _unitOfWork.RefreshTokenRepository.AddAsync(refresh_token, cancellationToken);
+                await _unitOfWork.RefreshTokenRepository.AddAsync(refresToken, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                return new TokenResponse { AccessToken = accessTokem, RefreshToken = refresToken.Token };
             }
             catch
             {

@@ -49,28 +49,25 @@ namespace Application.CQRS.Users.Commands.Refresh
 
             try
             {
-                var refresh_token = await _unitOfWork.RefreshTokenRepository.GetByTokenAsync(request.RefreshToken, cancellationToken);
-                if (refresh_token == null)
+                var refreshToken = await _unitOfWork.RefreshTokenRepository.GetByTokenAsync(request.RefreshToken, cancellationToken);
+                if (refreshToken == null)
                     throw new Exception("Invalid refresh token");
 
-                if (refresh_token.User == null)
+                if (refreshToken.User == null)
                     throw new Exception("User not found");
 
-                if (DateTime.UtcNow > refresh_token.ExpiresAtUtc)
+                if (DateTime.UtcNow > refreshToken.ExpiresAtUtc)
                     throw new Exception("Refresh token expired");
 
-                var at = _tokenService.GenerateAccessToken(refresh_token.User);
+                var accessToken = _tokenService.GenerateAccessToken(refreshToken.User);
+                refreshToken = _tokenService.GenerateRefreshToken(refreshToken.User, accessToken);
 
-                refresh_token.AccessToken = at;
-                refresh_token.Token = _tokenService.GenerateRefreshToken(at);
-                refresh_token.ExpiresAtUtc = DateTime.UtcNow.AddDays(6);
-
-                await _unitOfWork.RefreshTokenRepository.UpdateAsync(refresh_token, cancellationToken);
+                await _unitOfWork.RefreshTokenRepository.UpdateAsync(refreshToken, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                return new TokenResponse { AccessToken = accessToken, RefreshToken = refreshToken.Token };
             }
             catch
             {

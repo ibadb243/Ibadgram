@@ -60,23 +60,15 @@ namespace Application.CQRS.Users.Commands.Login
                 if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
                     throw new Exception("Invalid email or password!");
 
-                var at = _tokenService.GenerateAccessToken(user);
+                var accessToken = _tokenService.GenerateAccessToken(user);
+                var refreshToken = _tokenService.GenerateRefreshToken(user, accessToken);
 
-                var refresh_token = new RefreshToken
-                {
-                    UserId = user.Id,
-                    AccessToken = at,
-                    Token = _tokenService.GenerateRefreshToken(at),
-                    ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
-                    User = user
-                };
-
-                await _unitOfWork.RefreshTokenRepository.AddAsync(refresh_token, cancellationToken);
+                await _unitOfWork.RefreshTokenRepository.AddAsync(refreshToken, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                return new TokenResponse { AccessToken = at, RefreshToken = refresh_token.Token };
+                return new TokenResponse { AccessToken = accessToken, RefreshToken = refreshToken.Token };
             }
             catch
             {

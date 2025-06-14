@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common.Constants;
 using Domain.Entities;
 using FluentValidation;
 using MediatR;
@@ -12,14 +13,16 @@ namespace Application.CQRS.Users.Commands.UpdateUser
 {
     public class UserVm
     {
-        public string Fullname { get; set; }
+        public string Firstname { get; set; }
+        public string Lastname { get; set; }
         public string Shortname { get; set; }
     }
 
     public class UpdateUserCommand : IRequest<UserVm>
     {
         public Guid UserId { get; set; }
-        public string Fullname { get; set; }
+        public string Firstname { get; set; }
+        public string? Lastname { get; set; }
         public string Shortname { get; set; }
     }
 
@@ -27,9 +30,21 @@ namespace Application.CQRS.Users.Commands.UpdateUser
     {
         public UpdateUserCommandValidator()
         {
-            RuleFor(x => x.UserId).NotEmpty();
-            RuleFor(x => x.Fullname).NotEmpty().MaximumLength(256);
-            RuleFor(x => x.Shortname).NotEmpty().MinimumLength(4).MaximumLength(64);
+            RuleFor(x => x.UserId)
+                .NotEmpty();
+
+            RuleFor(x => x.Firstname)
+                .NotEmpty()
+                .MinimumLength(UserConstants.FirstnameMinLength)
+                .MaximumLength(UserConstants.FirstnameMaxLength);
+
+            RuleFor(x => x.Lastname)
+                .MaximumLength(UserConstants.LastnameLength);
+
+            RuleFor(x => x.Shortname)
+                .NotEmpty()
+                .MinimumLength(ShortnameConstants.MinLength)
+                .MaximumLength(ShortnameConstants.MaxLength);
         }
     }
 
@@ -52,7 +67,8 @@ namespace Application.CQRS.Users.Commands.UpdateUser
                 var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
                 if (user == null) throw new Exception("User not found");
 
-                user.Fullname = request.Fullname;
+                user.Firstname = request.Firstname;
+                user.Lastname = request.Lastname;
 
                 if (user.Mention.Shortname != request.Shortname)
                 {
@@ -78,7 +94,8 @@ namespace Application.CQRS.Users.Commands.UpdateUser
 
                 return new UserVm
                 {
-                    Fullname = request.Fullname,
+                    Firstname = request.Firstname,
+                    Lastname = request.Lastname,
                     Shortname = request.Shortname,
                 };
             }
