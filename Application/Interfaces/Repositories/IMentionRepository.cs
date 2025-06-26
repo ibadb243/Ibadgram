@@ -9,9 +9,15 @@ namespace Application.Interfaces.Repositories
 {
     public interface IMentionRepository
     {
-        public Task<Mention> AddAsync(Mention mention, CancellationToken cancellationToken = default);
-        public Task<Mention> UpdateAsync(Mention mention, CancellationToken cancellationToken = default);
-        public Task DeleteAsync(Mention mention, CancellationToken cancellationToken = default);
-        public Task<Mention?> GetByShortnameAsync(string shortname, CancellationToken cancellationToken = default);
+        /* base CRUD operations */
+        Task<Mention?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<Mention?> GetByShortnameAsync(string shortname, CancellationToken cancellationToken = default);
+        Task<Mention> AddAsync(Mention mention, CancellationToken cancellationToken = default);
+        Task<Mention> UpdateAsync(Mention mention, CancellationToken cancellationToken = default);
+        Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+        /* specific methods */
+        Task<IEnumerable<Mention>> SearchByShortnameAsync(string searchTerm, CancellationToken cancellationToken = default);
+        Task<bool> ExistsByShortnameAsync(string shortname, CancellationToken cancellationToken = default);
     }
 }
