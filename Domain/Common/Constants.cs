@@ -7,6 +7,8 @@
 
         public const int LastnameLength = 64;
 
+        public const int BioLength = 2048;
+
         public const int PasswordMinLength = 8;
         public const int PasswordMaxLength = 24;
     }
