@@ -23,6 +23,7 @@ namespace Persistence.Repositories
         private IUserMentionRepository _userMentionRepository;
         private IChatRepository _chatRepository;
         private IChatMemberRepository _chatMemberRepository;
+        private IMessageRepository _messageRepository;
 
         public UnitOfWork(ApplicationDbContext context)
         {
@@ -35,6 +36,7 @@ namespace Persistence.Repositories
         public IUserMentionRepository UserMentionRepository => _userMentionRepository ??= new UserMentionRepository(_context);
         public IChatRepository ChatRepository => _chatRepository ??= new ChatRepository(_context);
         public IChatMemberRepository ChatMemberRepository => _chatMemberRepository ??= new ChatMemberRepository(_context);
+        public IMessageRepository MessageRepository => _messageRepository ??= new MessageRepository(_context);
 
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
