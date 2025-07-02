@@ -13,6 +13,8 @@ namespace Domain.Entities
         public DateTime? LastSeenAt { get; set; }
         public string Email { get; set; }
         public bool EmailConfirmed { get; set; }
+        public string? EmailConfirmationToken { get; set; }
+        public DateTime? EmailConfirmationTokenExpiry { get; set; }
         public string? PhoneNumber { get; set; }
         public bool PhoneConfirmed { get; set; }
         public string PasswordSalt { get; set; }
@@ -29,7 +31,6 @@ namespace Domain.Entities
         /* Navigation Properties */
         public UserMention Mention { get; set; }
         public List<ChatMember> Memberships { get; set; }
-        public List<Message> Messages { get; set; }
         public List<RefreshToken> RefreshTokens { get; set; }
     }
 }

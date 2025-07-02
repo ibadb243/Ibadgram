@@ -6,9 +6,8 @@ using System.Threading.Tasks;
 
 namespace Application.Interfaces.Services
 {
-    public interface IPasswordHasher
+    public interface IEmailSender
     {
-        string HashPassword(string password, string salt);
-        bool VerifyPassword(string password, string salt, string hash);
+        Task SendEmailAsync(string email, string subject, string htmlMessage);
     }
 }
