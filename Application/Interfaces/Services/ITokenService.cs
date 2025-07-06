@@ -11,5 +11,6 @@ namespace Application.Interfaces.Services
     {
         string GenerateAccessToken(User user);
         RefreshToken GenerateRefreshToken(User user, string accessToken);
+        RefreshToken UpdateRefreshToken(RefreshToken refreshToken, string accessToken);
     }
 }

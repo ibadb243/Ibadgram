@@ -72,5 +72,17 @@ namespace Application.Services
                 User = user
             };
         }
+
+        public RefreshToken UpdateRefreshToken(RefreshToken refreshToken, string accessToken)
+        {
+            var randomNumber = new byte[64];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+
+            refreshToken.Token = Convert.ToHexString(randomNumber);
+            refreshToken.ExpiresAtUtc = DateTime.UtcNow.Add(_refreshTokenLifetime);
+
+            return refreshToken;
+        }
     }
 }
