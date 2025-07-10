@@ -102,6 +102,11 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                     EmailConfirmationTokenExpiry = DateTime.UtcNow.AddMinutes(5),
                 };
 
+                await _unitOfWork.UserRepository.AddAsync(user, cancellationToken);
+
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
                 await _emailSender.SendEmailAsync(
                     email: request.Email,
                     subject: "Code for confirm email",
@@ -109,11 +114,6 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                         <h2>Welcome to Ibadgram!</h2>
                         <p>Code: <span>{emailToken}</span></p>
                     ");
-
-                await _unitOfWork.UserRepository.AddAsync(user, cancellationToken);
-
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-                await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 return user.Id;
             }
