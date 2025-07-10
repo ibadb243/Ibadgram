@@ -96,7 +96,7 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
                     if (mention != null) throw new Exception("Shortname had taken");
 
                     mention = group.Mention;
-                    await _unitOfWork.MentionRepository.DeleteAsync(mention!, cancellationToken);
+                    await _unitOfWork.MentionRepository.DeleteAsync(mention.Id!, cancellationToken);
 
                     mention = new ChatMention
                     {
@@ -110,7 +110,7 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
                 }
                 else if (!group.IsPrivate.Value && request.IsPrivate)
                 {
-                    await _unitOfWork.MentionRepository.DeleteAsync(group.Mention!, cancellationToken);
+                    await _unitOfWork.MentionRepository.DeleteAsync(group.Mention.Id!, cancellationToken);
                     group.Mention = null;
                 }
                 else if (group.IsPrivate.Value && !request.IsPrivate)

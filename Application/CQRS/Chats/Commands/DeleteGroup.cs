@@ -54,7 +54,7 @@ namespace Application.CQRS.Chats.Commands.DeleteGroup
 
                 await _unitOfWork.ChatRepository.DeleteAsync(group, cancellationToken);
 
-                if (!group.IsPrivate.Value) await _unitOfWork.MentionRepository.DeleteAsync(group.Mention);
+                if (!group.IsPrivate.Value) await _unitOfWork.MentionRepository.DeleteAsync(group.Mention.Id);
 
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 

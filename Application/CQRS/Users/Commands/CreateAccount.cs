@@ -41,6 +41,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
             RuleFor(x => x.Email)
                 .NotEmpty()
                 .EmailAddress()
+                .WithMessage("A valid email address is required")
                 .Matches(BuildEmailPattern())
                 .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails")
                 .MustAsync(BeUniqueEmail)
