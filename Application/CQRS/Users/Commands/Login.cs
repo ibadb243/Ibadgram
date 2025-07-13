@@ -5,6 +5,7 @@ using Domain.Entities;
 using FluentResults;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,18 +40,23 @@ namespace Application.CQRS.Users.Commands.Login
 
             RuleFor(x => x.Email)
                 .NotEmpty()
+                    .WithMessage("Email is required")
                 .EmailAddress()
+                    .WithMessage("Email address doesn't correct")
                 .Matches(BuildEmailPattern())
-                .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails")
-                .MustAsync(BeExistEmail)
-                .WithMessage("Email not registered")
-                .MustAsync(BeVerified)
-                .WithMessage("Email do not pass registration");
+                    .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
+                //.MustAsync(BeExistEmail)
+                //.WithMessage("Email not registered")
+                //.MustAsync(BeVerified)
+                //.WithMessage("Email do not pass registration");
 
             RuleFor(x => x.Password)
                 .NotEmpty()
-                .MinimumLength(8)
-                .MaximumLength(64);
+                    .WithMessage("Password is required")
+                .MinimumLength(UserConstants.PasswordMinLength)
+                    .WithMessage($"Password's length should have minimum {UserConstants.PasswordMinLength} characters")
+                .MaximumLength(UserConstants.PasswordMaxLength)
+                    .WithMessage($"Password's length cann't have characters greater than {UserConstants.PasswordMaxLength}");
         }
 
         private string BuildEmailPattern()
@@ -76,36 +82,68 @@ namespace Application.CQRS.Users.Commands.Login
         private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IPasswordHasher _passwordHasher;
+        private readonly ILogger<LoginUserCommandHandler> _logger;
 
         public LoginUserCommandHandler(
             IUnitOfWork unitOfWork,
             ITokenService tokenService,
-            IPasswordHasher passwordHasher)
+            IPasswordHasher passwordHasher,
+            ILogger<LoginUserCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _passwordHasher = passwordHasher;
+            _logger = logger;
         }
 
         public async Task<Result<LoginUserCommandResponse>> Handle(LoginUserCommand request, CancellationToken cancellationToken)
         {
+            _logger.LogInformation("Starting login proccess");
+
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             try
             {
+                _logger.LogDebug("Retrieving user by email {Email} from database", request.Email);
                 var user = await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken);
-                if (user == null) return Result.Fail($"User with email {request.Email} not found");
+
+                if (user == null)
+                {
+                    _logger.LogWarning("Login failed - user not found");
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result.Fail("Invalid email or password!");
+                }
+
+                if (user.IsDeleted)
+                {
+                    _logger.LogWarning("Login failed - user is deleted");
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result.Fail("User was deleted");
+                }
 
                 if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordSalt, user.PasswordHash))
-                    throw new Exception("Invalid email or password!");
+                {
+                    _logger.LogWarning("Login failed - user input wrong password");
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result.Fail("Invalid email or password!");
+                }
 
+                _logger.LogDebug("Parameters validated successfully");
+
+                _logger.LogDebug("Generating Access and Refresh Tokens");
                 var accessToken = _tokenService.GenerateAccessToken(user);
                 var refreshToken = _tokenService.GenerateRefreshToken(user, accessToken);
 
+                _logger.LogDebug("Adding refresh token to database: {RefreshTokenId}", refreshToken.Id);
                 await _unitOfWork.RefreshTokenRepository.AddAsync(refreshToken, cancellationToken);
+
+                _logger.LogDebug("Saving changes to database");
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
+                _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                _logger.LogInformation("User login successfully");
 
                 return new LoginUserCommandResponse
                 {
@@ -117,9 +155,20 @@ namespace Application.CQRS.Users.Commands.Login
                     RefreshToken = refreshToken.Token,
                 };
             }
-            catch
+            catch (Exception ex)
             {
-                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                _logger.LogError(ex, "Login failed");
+
+                try
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    _logger.LogDebug("Transaction rolled back successfully");
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction during login");
+                }
+
                 throw;
             }
         }
