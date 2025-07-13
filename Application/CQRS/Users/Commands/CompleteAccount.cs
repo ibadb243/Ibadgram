@@ -38,7 +38,7 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
                 .MinimumLength(ShortnameConstants.MinLength)
                     .WithMessage($"Shortname's length should have minimum {ShortnameConstants.MinLength} characters")
                 .MaximumLength(ShortnameConstants.MaxLength)
-                    .WithMessage($"Shortname's length cann't have characters greater than {ShortnameConstants.MinLength}");
+                    .WithMessage($"Shortname's length cann't have characters greater than {ShortnameConstants.MaxLength}");
                 //.MustAsync(BeUniqueShortname)
                 //.WithMessage($"Shortname has already taken");
 

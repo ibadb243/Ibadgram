@@ -42,7 +42,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
 
             RuleFor(x => x.Lastname)
                 .MaximumLength(UserConstants.LastnameLength)
-                    .WithMessage($"Lastname's length cann't have characters greater than {UserConstants.FirstnameMaxLength}");
+                    .WithMessage($"Lastname's length cann't have characters greater than {UserConstants.LastnameLength}");
 
             RuleFor(x => x.Email)
                 .NotEmpty()
@@ -58,9 +58,9 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                 .NotEmpty()
                     .WithMessage("Password is required")
                 .MinimumLength(UserConstants.PasswordMinLength)
-                    .WithMessage($"Password's length should have minimum {UserConstants.FirstnameMinLength} characters")
+                    .WithMessage($"Password's length should have minimum {UserConstants.PasswordMinLength} characters")
                 .MaximumLength(UserConstants.PasswordMaxLength)
-                    .WithMessage($"Password's length cann't have characters greater than {UserConstants.FirstnameMaxLength}");
+                    .WithMessage($"Password's length cann't have characters greater than {UserConstants.PasswordMaxLength}");
         }
 
         private string BuildEmailPattern()
