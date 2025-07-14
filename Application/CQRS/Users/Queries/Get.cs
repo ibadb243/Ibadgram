@@ -4,6 +4,7 @@ using Domain.Enums;
 using FluentResults;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,10 +39,11 @@ namespace Application.CQRS.Users.Queries.Get
 
             RuleFor(x => x.UserId)
                 .NotEmpty()
-                .MustAsync(BeExist)
-                .WithMessage("User not found")
-                .MustAsync(BeVerified)
-                .WithMessage("User do not pass registration");
+                    .WithMessage("UserId is required");
+                //.MustAsync(BeExist)
+                //.WithMessage("User not found")
+                //.MustAsync(BeVerified)
+                //.WithMessage("User do not pass registration");
         }
 
         private async Task<bool> BeExist(Guid userId, CancellationToken cancellationToken)
@@ -59,28 +61,59 @@ namespace Application.CQRS.Users.Queries.Get
     public class GetUserQueryHandler : IRequestHandler<GetUserQuery, Result<UserVm>>
     {
         private readonly IUserRepository _userRepository;
+        private readonly ILogger<GetUserQueryHandler> _logger;
 
-        public GetUserQueryHandler(IUserRepository userRepository)
+        public GetUserQueryHandler(
+            IUserRepository userRepository,
+            ILogger<GetUserQueryHandler> logger)
         {
             _userRepository = userRepository;
+            _logger = logger;
         }
 
         public async Task<Result<UserVm>> Handle(GetUserQuery request, CancellationToken cancellationToken)
         {
-            var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
-            if (user == null) return Result.Fail("User not found");
+            _logger.LogInformation("Proccessing get user for id: {UserId}", request.UserId);
 
-            if (user.IsDeleted) return new UserVm { IsDeleted = true };
-
-            return new UserVm
+            try
             {
-                Firstname = user.Firstname,
-                Lastname = user.Lastname,
-                Shortname = user.Mention.Shortname,
-                Bio = user.Bio,
-                Status = user.Status,
-                LastSeenAt = user.LastSeenAt,
-            };
+                _logger.LogDebug("Retrieving user by id {UserID} from databse", request.UserId);
+                var user = await _userRepository.GetByIdAsync(request.UserId, cancellationToken);
+
+                if (user == null)
+                {
+                    _logger.LogWarning("Get user failed - user {UserId} not found", request.UserId);
+                    return Result.Fail("User not found");
+                }
+
+                _logger.LogDebug("User {UserId} found with status: {Status}, IsDeleted: {IsDeleted}", request.UserId, user.Status, user.IsDeleted);
+
+                if (user.IsDeleted) 
+                {
+                    _logger.LogInformation("Returning deleted user indicator for UserId: {UserId}", request.UserId);
+                    return new UserVm { IsDeleted = true };
+                }
+
+                _logger.LogDebug("Mapping user data for UserId: {UserId}", request.UserId);
+                var userVm = new UserVm
+                {
+                    Firstname = user.Firstname,
+                    Lastname = user.Lastname,
+                    Shortname = user.Mention.Shortname,
+                    Bio = user.Bio,
+                    Status = user.Status,
+                    LastSeenAt = user.LastSeenAt,
+                };
+
+                _logger.LogInformation("Successfully retrieved user data for UserId: {UserId}", request.UserId);
+
+                return userVm;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while processing get user query for UserId: {UserId}", request.UserId);
+                throw;
+            }
         }
     }
 }
