@@ -58,7 +58,7 @@ namespace Application.CQRS.Users.Commands.UpdateUser
 
         private bool BeAllPropertiesNull(UpdateUserCommand command)
         {
-            return command.Firstname == null && command.Lastname == null && command.Bio == null;
+            return !(command.Firstname == null && command.Lastname == null && command.Bio == null);
         }
 
         private async Task<bool> BeExist(Guid userId, CancellationToken cancellationToken)
