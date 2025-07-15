@@ -91,7 +91,14 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
                     return Result.Fail("User's email address not confirmed");
                 }
 
-                _logger.LogDebug("User confirmation status validated successfully, updating user: {UserId}", user.Id);
+                if (await _unitOfWork.MentionRepository.ExistsByShortnameAsync(request.Shortname, cancellationToken))
+                {
+                    _logger.LogWarning("Complete account failed - shortname has been taken");
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result.Fail($"Shortname {request.Shortname} had benn taken");
+                }
+
+                _logger.LogDebug("User confirmation status and shortname validated successfully, updating user: {UserId}", user.Id);
 
                 user.Bio = request.Bio;
                 user.IsVerified = true;
