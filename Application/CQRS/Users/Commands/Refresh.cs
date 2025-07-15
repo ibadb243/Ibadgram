@@ -131,7 +131,7 @@ namespace Application.CQRS.Users.Commands.Refresh
                 _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("Refresh token completed successfully for user {UserId}", );
+                _logger.LogInformation("Refresh token completed successfully for user {UserId}", user.Id);
 
                 return new RefreshTokenResponse 
                 {
