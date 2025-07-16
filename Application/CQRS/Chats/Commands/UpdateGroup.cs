@@ -3,6 +3,7 @@ using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Enums;
+using FluentResults;
 using FluentValidation;
 using MediatR;
 using System;
@@ -14,20 +15,12 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Chats.Commands.UpdateGroup
 {
-    public class GroupVm
-    {
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public bool IsPrivate { get; set; }
-        public string? Shortname { get; set; }
-    }
-
-    public class UpdateGroupCommand : IRequest<GroupVm>
+    public class UpdateGroupCommand : IRequest<Result>
     {
         public Guid UserId { get; set; }
         public Guid GroupId { get; set; }
-        public string Name { get; set; }
-        public string Description { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
         public bool IsPrivate { get; set; }
         public string? Shortname { get; set; }
     }
@@ -60,7 +53,7 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
         }
     }
 
-    public class UpdateGroupCommandHandler : IRequestHandler<UpdateGroupCommand, GroupVm>
+    public class UpdateGroupCommandHandler : IRequestHandler<UpdateGroupCommand, Result>
     {
         private readonly IUnitOfWork _unitOfWork;
 
@@ -70,7 +63,7 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
             _unitOfWork = unitOfWork;
         }
 
-        public async Task<GroupVm> Handle(UpdateGroupCommand request, CancellationToken cancellationToken)
+        public async Task<Result> Handle(UpdateGroupCommand request, CancellationToken cancellationToken)
         {
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
@@ -133,13 +126,14 @@ namespace Application.CQRS.Chats.Commands.UpdateGroup
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                return new GroupVm
-                {
-                    Name = group.Name,
-                    Description = group.Description,
-                    IsPrivate = group.IsPrivate.Value,
-                    Shortname = group.IsPrivate.Value ? null : group.Mention!.Shortname,
-                };
+                return Result.Ok();
+                //return new GroupVm
+                //{
+                //    Name = group.Name,
+                //    Description = group.Description,
+                //    IsPrivate = group.IsPrivate.Value,
+                //    Shortname = group.IsPrivate.Value ? null : group.Mention!.Shortname,
+                //};
             }
             catch
             {

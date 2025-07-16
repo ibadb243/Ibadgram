@@ -161,6 +161,8 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
                 _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
+                _logger.LogInformation("Creating group completed successfully");
+
                 return group.Id;
             }
             catch (Exception ex)
