@@ -58,45 +58,45 @@ namespace Application.CQRS.Chats.Commands.MakePrivateGroup
 
                 if (user == null)
                 {
-                    _logger.LogDebug("Configure group failed - user not found");
+                    _logger.LogWarning("Configure group failed - user not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("User not found");
                 }
 
                 if (!user.IsVerified)
                 {
-                    _logger.LogDebug("Configure group failed - user isn't verified");
+                    _logger.LogWarning("Configure group failed - user isn't verified");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("User isn't verified");
                 }
 
                 if (user.IsDeleted)
                 {
-                    _logger.LogDebug("Configure group failed - user is deleted");
+                    _logger.LogWarning("Configure group failed - user is deleted");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("User is deleted");
                 }
 
-                _logger.LogDebug("Retrieving group by id {ChatId} from database", request.GroupId);
+                _logger.LogWarning("Retrieving group by id {ChatId} from database", request.GroupId);
                 var group = await _unitOfWork.ChatRepository.GetByIdAsync(request.GroupId, cancellationToken);
 
                 if (group == null)
                 {
-                    _logger.LogDebug("Configure group failed - group not found");
+                    _logger.LogWarning("Configure group failed - group not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("Group not found");
                 }
 
                 if (group.IsDeleted)
                 {
-                    _logger.LogDebug("Configure group failed - group is deleted");
+                    _logger.LogWarning("Configure group failed - group is deleted");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("Group is deleted");
                 }
 
                 if (group.IsPrivate.HasValue && group.IsPrivate.Value)
                 {
-                    _logger.LogDebug("Configure group failed - group is private");
+                    _logger.LogWarning("Configure group failed - group is private");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("Group is private");
                 }
