@@ -1,4 +1,5 @@
 ﻿using Domain.Common;
+using Domain.Common.Constants;
 using Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -14,6 +15,16 @@ namespace Persistence.EntityConfigurations
     {
         public void Configure(EntityTypeBuilder<Mention> builder)
         {
+            // Table name
+            builder.ToTable("Mentions");
+
+            // Configure Table-Per-Hierarchy (TPH) inheritance
+            builder
+                .HasDiscriminator<string>("MentionType")
+                .HasValue<ChatMention>("Chat")
+                .HasValue<UserMention>("User");
+
+            // Primary key
             builder
                 .HasKey(x => x.Id);
 
@@ -21,19 +32,16 @@ namespace Persistence.EntityConfigurations
                 .Property(x => x.Id)
                 .ValueGeneratedOnAdd();
 
+            // Shortname configuration
             builder
-                .HasDiscriminator<int>("MentionType")
-                    .HasValue<UserMention>(1)
-                    .HasValue<ChatMention>(2);
+                .Property(x => x.Shortname)
+                .IsRequired()
+                .HasMaxLength(ShortnameConstants.MaxLength);
 
+            // Unique constraint on shortname
             builder
                 .HasIndex(x => x.Shortname)
                 .IsUnique();
-
-            builder
-                .Property(x => x.Shortname)
-                .HasMaxLength(64)
-                .IsRequired();
         }
     }
 }

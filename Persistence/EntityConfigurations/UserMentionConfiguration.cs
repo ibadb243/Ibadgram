@@ -13,14 +13,23 @@ namespace Persistence.EntityConfigurations
     {
         public void Configure(EntityTypeBuilder<UserMention> builder)
         {
+            // Configure the foreign key property
             builder
-                .HasIndex(x => x.UserId);
+                .Property(um => um.UserId)
+                .IsRequired();
 
+            // Index on UserId for better query performance
+            builder
+                .HasIndex(um => um.UserId);
+
+            // Relationship configuration
+            // Note: Changed to WithMany() assuming User can have multiple mentions
+            // If it's truly one-to-one, keep WithOne()
             builder
                 .HasOne(um => um.User)
-                .WithOne(u => u.Mention)
+                .WithOne(u => u.Mention) // or WithOne(u => u.Mention) if one-to-one
                 .HasForeignKey<UserMention>(um => um.UserId)
-                .IsRequired(false);
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

@@ -20,7 +20,8 @@ namespace Persistence.Data
         public DbSet<UserMention> UserMentions { get; set; }
         public DbSet<ChatMention> ChatMentions { get; set; }
 
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) 
+            : base(options)
         {
             
         }

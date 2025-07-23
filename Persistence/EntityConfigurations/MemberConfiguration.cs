@@ -13,17 +13,14 @@ namespace Persistence.EntityConfigurations
     {
         public void Configure(EntityTypeBuilder<ChatMember> builder)
         {
-            builder
-                .HasKey(x => x.Id);
+            // Table name
+            builder.ToTable("ChatMembers");
 
+            // Composite primary key using ChatId and UserId
             builder
-                .Property(x => x.Id)
-                .ValueGeneratedOnAdd();
+                .HasKey(x => new { x.ChatId, x.UserId });
 
-            builder
-                .HasIndex(x => new { x.ChatId, x.UserId })
-                .IsUnique();
-
+            // Required properties
             builder
                 .Property(x => x.ChatId)
                 .IsRequired();
@@ -32,9 +29,38 @@ namespace Persistence.EntityConfigurations
                 .Property(x => x.UserId)
                 .IsRequired();
 
+            // Nickname configuration with max length
             builder
                 .Property(x => x.Nickname)
-                .HasMaxLength(64);
+                .HasMaxLength(64)
+                .IsRequired(false); // Nullable
+
+            // Role configuration (nullable enum)
+            builder
+                .Property(x => x.Role)
+                .IsRequired(false);
+
+            // Timestamp configurations
+            builder
+                .Property(x => x.CreatedAtUtc)
+                .IsRequired(false);
+
+            builder
+                .Property(x => x.UpdatedAtUtc)
+                .IsRequired(false);
+
+            // Relationships
+            builder
+                .HasOne(x => x.Chat)
+                .WithMany() // Assuming Chat has a collection of ChatMembers
+                .HasForeignKey(x => x.ChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder
+                .HasOne(x => x.User)
+                .WithMany() // Assuming User has a collection of ChatMembers
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }
