@@ -53,8 +53,7 @@ namespace Persistence.EntityConfigurations
             // CreatedAtUtc
             builder
                 .Property(x => x.CreatedAtUtc)
-                .IsRequired()
-                .HasDefaultValueSql("getdate()");
+                .IsRequired();
 
             // IsDeleted (для soft delete)
             builder

@@ -47,8 +47,7 @@ namespace Persistence.EntityConfigurations
             // CreatedAtUtc
             builder
                 .Property(x => x.CreatedAtUtc)
-                .IsRequired()
-                .HasDefaultValueSql("getdate()");
+                .IsRequired();
 
             // UpdatedAtUtc
             builder

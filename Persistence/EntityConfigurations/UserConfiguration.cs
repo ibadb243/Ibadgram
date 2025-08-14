@@ -14,10 +14,6 @@ namespace Persistence.EntityConfigurations
     {
         public void Configure(EntityTypeBuilder<User> builder)
         {
-            // Table name
-            builder
-                .ToTable("Users");
-
             // Primary Key
             builder
                 .HasKey(x => x.Id);
@@ -152,8 +148,7 @@ namespace Persistence.EntityConfigurations
             // CreatedAtUtc
             builder
                 .Property(x => x.CreatedAtUtc)
-                .IsRequired()
-                .HasDefaultValueSql("getdate()");
+                .IsRequired();
 
             // IsDeleted (для soft delete)
             builder
@@ -186,6 +181,10 @@ namespace Persistence.EntityConfigurations
             // Глобальный фильтр для soft delete
             builder
                 .HasQueryFilter(u => !u.IsDeleted);
+
+            builder
+                .Navigation(u => u.Mention)
+                .AutoInclude();
         }
     }
 }
