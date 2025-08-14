@@ -43,5 +43,10 @@ namespace Persistence.Repositories
         {
             return await _context.UserMentions.FirstOrDefaultAsync(m => m.Shortname == shortname, cancellationToken);
         }
+
+        public async Task<UserMention?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            return await _context.UserMentions.FirstOrDefaultAsync(um => um.UserId == userId, cancellationToken);
+        }
     }
 }

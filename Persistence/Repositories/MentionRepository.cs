@@ -15,14 +15,11 @@ namespace Persistence.Repositories
     public class MentionRepository : IMentionRepository
     {
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<MentionRepository> _logger;
 
         public MentionRepository(
-            ApplicationDbContext context,
-            ILogger<MentionRepository> logger)
+            ApplicationDbContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
         public async Task<Mention?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -39,7 +36,6 @@ namespace Persistence.Repositories
         {
             await _context.Mentions.AddAsync(mention, cancellationToken);
 
-            _logger.LogInformation("Mention created with ID: {MentionId}", mention.Id);
             return mention;
         }
 
@@ -47,7 +43,6 @@ namespace Persistence.Repositories
         {
             _context.Mentions.Update(mention);
 
-            _logger.LogInformation("Mention updated with ID: {MentionId}", mention.Id);
             return mention;
         }
 
@@ -60,8 +55,6 @@ namespace Persistence.Repositories
             }
 
             _context.Mentions.Remove(mention);
-
-            _logger.LogInformation("Mention deleted: {MentionId}", id);
         }
 
         public async Task<IEnumerable<Mention>> SearchByShortnameAsync(string searchTerm, CancellationToken cancellationToken = default)

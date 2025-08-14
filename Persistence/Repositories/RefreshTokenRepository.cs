@@ -14,14 +14,11 @@ namespace Persistence.Repositories
     public class RefreshTokenRepository : IRefreshTokenRepository
     {
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<RefreshTokenRepository> _logger;
 
         public RefreshTokenRepository(
-            ApplicationDbContext context,
-            ILogger<RefreshTokenRepository> logger)
+            ApplicationDbContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
         public async Task<RefreshToken?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -44,7 +41,6 @@ namespace Persistence.Repositories
 
             await _context.RefreshTokens.AddAsync(refreshToken);
 
-            _logger.LogInformation("RefreshToken created for user: {UserId}", refreshToken.UserId);
             return refreshToken;
         }
 
@@ -52,7 +48,6 @@ namespace Persistence.Repositories
         {
             _context.RefreshTokens.Update(refreshToken);
 
-            _logger.LogInformation("RefreshToken updated: {TokenId}", refreshToken.Id);
             return refreshToken;
         }
 
@@ -65,8 +60,6 @@ namespace Persistence.Repositories
             }
 
             _context.RefreshTokens.Remove(token);
-
-            _logger.LogInformation("RefreshToken deleted: {TokenId}", id);
         }
 
         public async Task<IEnumerable<RefreshToken>> GetUserTokensAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -104,14 +97,11 @@ namespace Persistence.Repositories
 
             if (refreshToken.IsRevoked)
             {
-                _logger.LogInformation("Token already revoked for user: {UserId}", refreshToken.UserId);
                 return;
             }
 
             refreshToken.IsRevoked = true;
             _context.RefreshTokens.Update(refreshToken);
-
-            _logger.LogInformation("RefreshToken revoked for user: {UserId}", refreshToken.UserId);
         }
 
         public async Task RevokeTokenAsync(Guid tokenId, CancellationToken cancellationToken = default)
@@ -124,14 +114,11 @@ namespace Persistence.Repositories
 
             if (refreshToken.IsRevoked)
             {
-                _logger.LogInformation("Token already revoked for user: {UserId}", refreshToken.UserId);
                 return;
             }
 
             refreshToken.IsRevoked = true;
             _context.RefreshTokens.Update(refreshToken);
-
-            _logger.LogInformation("RefreshToken revoked: {TokenId}", tokenId);
         }
 
         public async Task RevokeAllUserTokensAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -144,11 +131,6 @@ namespace Persistence.Repositories
             {
                 token.IsRevoked = true;
                 _context.RefreshTokens.Update(token);
-            }
-
-            if (tokens.Any())
-            {
-                _logger.LogInformation("All RefreshTokens revoked for user: {UserId}, Count: {Count}", userId, tokens.Count);
             }
         }
 
@@ -163,11 +145,6 @@ namespace Persistence.Repositories
             {
                 token.IsRevoked = true;
                 _context.RefreshTokens.Update(token);
-            }
-
-            if (expiredTokens.Any())
-            {
-                _logger.LogInformation("Expired RefreshTokens revoked, Count: {Count}", expiredTokens.Count);
             }
         }
 
@@ -194,8 +171,6 @@ namespace Persistence.Repositories
             if (expiredTokens.Any())
             {
                 _context.RefreshTokens.RemoveRange(expiredTokens);
-
-                _logger.LogInformation("Expired RefreshTokens cleaned up, Count: {Count}", expiredTokens.Count);
             }
         }
 
@@ -208,8 +183,6 @@ namespace Persistence.Repositories
             if (revokedTokens.Any())
             {
                 _context.RefreshTokens.RemoveRange(revokedTokens);
-
-                _logger.LogInformation("Old revoked RefreshTokens cleaned up, Count: {Count}", revokedTokens.Count);
             }
         }
 

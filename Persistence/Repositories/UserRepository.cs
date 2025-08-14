@@ -14,14 +14,11 @@ namespace Persistence.Repositories
     public class UserRepository : IUserRepository
     {
         private readonly ApplicationDbContext _context;
-        private readonly ILogger<UserRepository> _logger;
 
         public UserRepository(
-            ApplicationDbContext context,
-            ILogger<UserRepository> logger)
+            ApplicationDbContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
         public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -51,15 +48,12 @@ namespace Persistence.Repositories
 
             await _context.Users.AddAsync(user, cancellationToken);
 
-            _logger.LogInformation("User created with ID: {UserId}", user.Id);
             return user;
         }
 
         public async Task<User> UpdateAsync(User user, CancellationToken cancellationToken = default)
         {
             _context.Users.Update(user);
-
-            _logger.LogInformation("User updated with ID: {UserId}", user.Id);
             return user;
         }
 
@@ -73,8 +67,6 @@ namespace Persistence.Repositories
 
             user.IsDeleted = true;
             _context.Users.Update(user);
-
-            _logger.LogInformation("User soft deleted with ID: {UserId}", id);
         }
 
         public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default)
@@ -128,8 +120,6 @@ namespace Persistence.Repositories
 
             user.EmailConfirmed = true;
             _context.Users.Update(user);
-
-            _logger.LogInformation("User email was confirmed with ID: {UserId}", userId);
         }
 
         public async Task UpdatePasswordSaltAndPasswordHashAsync(

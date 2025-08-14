@@ -39,14 +39,6 @@ namespace Persistence.Repositories
             return Task.CompletedTask;
         }
 
-        public async Task<ChatMember?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            return await _context.Members
-                .Include(m => m.User)
-                .Include(m => m.Chat)
-                .FirstOrDefaultAsync(m => m.Id == id, cancellationToken);
-        }
-
         public async Task<ChatMember?> GetByIdsAsync(Guid chatId, Guid userId, CancellationToken cancellationToken = default)
         {
             return await _context.Members

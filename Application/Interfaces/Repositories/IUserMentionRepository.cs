@@ -13,5 +13,6 @@ namespace Application.Interfaces.Repositories
         public Task<UserMention> UpdateAsync(UserMention userMention, CancellationToken cancellationToken = default);
         public Task DeleteAsync(UserMention mention, CancellationToken cancellationToken = default);
         public Task<UserMention?> GetByShortnameAsync(string shortname, CancellationToken cancellationToken = default);
+        public Task<UserMention?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
     }
 }
