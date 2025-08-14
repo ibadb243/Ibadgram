@@ -1,4 +1,5 @@
-﻿using FluentResults;
+﻿using Domain.Errors;
+using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -47,10 +48,7 @@ namespace Application.Common.Behaviors
             if (failures.Count != 0)
             {
                 var errors = failures.Select(failure =>
-                    new ValidationError(failure.ErrorMessage)
-                        .WithPropertyName(failure.PropertyName)
-                        .WithAttemptedValue(failure.AttemptedValue)
-                        .WithErrorCode(failure.ErrorCode)
+                    new ValidationError(failure.ErrorCode, failure.ErrorMessage, failure.PropertyName, failure.AttemptedValue)
                 ).ToArray();
                 
                 return MakeFailResult(typeof(TResponse), errors);
