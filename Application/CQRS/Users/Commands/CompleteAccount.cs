@@ -29,10 +29,12 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
             _mentionRepository = mentionRepository;
 
             RuleFor(x => x.UserId)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("UserId is required");
 
             RuleFor(x => x.Shortname)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Shortname is required")
                 .MinimumLength(ShortnameConstants.MinLength)
@@ -43,6 +45,7 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
                 //.WithMessage($"Shortname has already taken");
 
             RuleFor(x => x.Bio)
+                .Cascade(CascadeMode.Stop)
                 .MaximumLength(UserConstants.BioLength)
                     .WithMessage($"Bio's length cann't have characters greater than {UserConstants.BioLength}");
         }

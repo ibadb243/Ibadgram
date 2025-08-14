@@ -28,6 +28,7 @@ namespace Application.CQRS.Users.Commands.UpdateConfirmEmailToken
             _userRepository = userRepository;
 
             RuleFor(x => x.Email)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Email is required")
                 .EmailAddress()

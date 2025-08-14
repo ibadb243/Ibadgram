@@ -28,6 +28,7 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
             _userRepository = userRepository;
 
             RuleFor(x => x.Email)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Email is required")
                 .EmailAddress()
@@ -40,6 +41,7 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
                 //.WithMessage("Email has already confirmed");
 
             RuleFor(x => x.Code)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Code is required");
 

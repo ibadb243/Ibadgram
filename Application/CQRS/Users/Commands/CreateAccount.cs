@@ -33,6 +33,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
             _userRepository = userRepository;
 
             RuleFor(x => x.Firstname)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Firstname is required")
                 .MinimumLength(UserConstants.FirstnameMinLength)
@@ -41,10 +42,12 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                     .WithMessage($"Firstname's length cann't have characters greater than {UserConstants.FirstnameMaxLength}");
 
             RuleFor(x => x.Lastname)
+                .Cascade(CascadeMode.Stop)
                 .MaximumLength(UserConstants.LastnameLength)
                     .WithMessage($"Lastname's length cann't have characters greater than {UserConstants.LastnameLength}");
 
             RuleFor(x => x.Email)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Email is required")
                 .EmailAddress()
@@ -55,6 +58,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                 //.WithMessage("Email has already been registered with an account");
 
             RuleFor(x => x.Password)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Password is required")
                 .MinimumLength(UserConstants.PasswordMinLength)

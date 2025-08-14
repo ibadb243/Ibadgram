@@ -39,6 +39,7 @@ namespace Application.CQRS.Users.Commands.Login
             _userRepository = userRepository;
 
             RuleFor(x => x.Email)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Email is required")
                 .EmailAddress()
@@ -51,6 +52,7 @@ namespace Application.CQRS.Users.Commands.Login
                 //.WithMessage("Email do not pass registration");
 
             RuleFor(x => x.Password)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
                     .WithMessage("Password is required")
                 .MinimumLength(UserConstants.PasswordMinLength)
@@ -114,6 +116,13 @@ namespace Application.CQRS.Users.Commands.Login
                     return Result.Fail("Invalid email or password!");
                 }
 
+                if (!user.IsVerified)
+                {
+                    _logger.LogWarning("Login failed - user isn't verified");
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return Result.Fail("User isn't verified");
+                }
+
                 if (user.IsDeleted)
                 {
                     _logger.LogWarning("Login failed - user is deleted");
@@ -127,6 +136,18 @@ namespace Application.CQRS.Users.Commands.Login
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                     return Result.Fail("Invalid email or password!");
                 }
+
+                //_logger.LogDebug("Retrieving mention by user {UserId} from database", user.Id); 
+                //var mention = await _unitOfWork.UserMentionRepository.GetByUserIdAsync(user.Id, cancellationToken);
+
+                //if (mention == null)
+                //{
+                //    _logger.LogWarning("Login failed - mention not found");
+                //    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                //    return Result.Fail("Mention not found");
+                //}
+
+                //user.Mention = mention;
 
                 _logger.LogDebug("Parameters validated successfully");
 
