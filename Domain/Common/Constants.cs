@@ -22,6 +22,8 @@
             "yandex.ru",
             "mail.ru",
         };
+
+        public const int EmailConfirmationTokenLength = 6;
     }
 
     public static class ShortnameConstants

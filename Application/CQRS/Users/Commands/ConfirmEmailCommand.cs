@@ -1,5 +1,8 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common;
 using Domain.Common.Constants;
+using Domain.Entities;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -15,7 +18,7 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
 {
     public class ConfirmEmailCommand : IRequest<Result>
     {
-        public string Email { get; set; }
+        public Guid UserId { get; set; }
         public string Code { get; set; }
     }
 
@@ -27,53 +30,23 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
         {
             _userRepository = userRepository;
 
-            RuleFor(x => x.Email)
+            RuleFor(x => x.UserId)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
-                    .WithMessage("Email is required")
-                .EmailAddress()
-                    .WithMessage("Email address doesn't correct")
-                .Matches(BuildEmailPattern())
-                    .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
-                //.MustAsync(BeExistEmail)
-                //.WithMessage("Email not registered")
-                //.MustAsync(BeNotAlreadyConfirmed)
-                //.WithMessage("Email has already confirmed");
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                    .WithMessage("UserId is required");
 
             RuleFor(x => x.Code)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
-                    .WithMessage("Code is required");
-
-            //RuleFor(x => x)
-            //    .MustAsync(BeValidConfirmationCode)
-            //    .WithMessage("Invalid or expired confirmed code");
-        }
-
-        private string BuildEmailPattern()
-        {
-            var escapedDomains = EmailConstants.AllowedDomains.Select(d => d.Replace(".", @"\."));
-            return $@"^.*@({string.Join("|", escapedDomains)})$";
-        }
-
-        private async Task<bool> BeExistEmail(string email, CancellationToken cancellationToken)
-        {
-            return await _userRepository.EmailExistsAsync(email, cancellationToken);
-        }
-
-        private async Task<bool> BeNotAlreadyConfirmed(string email, CancellationToken cancellationToken)
-        {
-            var user = await _userRepository.GetByEmailAsync(email, cancellationToken);
-            return user != null && !user.EmailConfirmed;
-        }
-
-        private async Task<bool> BeValidConfirmationCode(ConfirmEmailCommand command, CancellationToken cancellationToken)
-        {
-            var user = await _userRepository.GetByEmailAsync(command.Email, cancellationToken);
-            if (user == null) return false;
-
-            return user.EmailConfirmationToken == command.Code &&
-                   user.EmailConfirmationTokenExpiry > DateTime.UtcNow;
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                    .WithMessage("Code is required")
+                .Length(EmailConstants.EmailConfirmationTokenLength)
+                    .WithErrorCode(ErrorCodes.INVALID_FORMAT)
+                    .WithMessage($"Confirmation code must be {EmailConstants.EmailConfirmationTokenLength} characters long")
+                .Matches("^[0-9A-Fa-f]+$")
+                    .WithErrorCode(ErrorCodes.INVALID_FORMAT)
+                    .WithMessage("Confirmation code contains invalid characters");
         }
     }
 
@@ -92,73 +65,45 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
 
         public async Task<Result> Handle(ConfirmEmailCommand request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting email confirmation proccess");
+            _logger.LogInformation("Starting email confirmation process for user: {UserId}", request.UserId);
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                _logger.LogDebug("Retrieving user by email {Email} from database", request.Email);
-                var user = await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken);
-
-                if (user == null)
+                var userResult = await GetUserAsync(request.UserId, cancellationToken);
+                if (userResult.IsFailed)
                 {
-                    _logger.LogWarning("Email confirmation failed - user not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail($"User with email {request.Email} not found");
+                    return userResult.ToResult();
                 }
 
-                _logger.LogDebug("User found: {UserId}, checking confirmation status", user.Id);
+                var user = userResult.Value;
 
-                if (user.EmailConfirmed)
+                var validationResult = ValidateConfirmationStatus(user);
+                if (validationResult.IsFailed)
                 {
-                    _logger.LogWarning("Email confirmation failed - email {Email} already confirmed", request.Email);
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Email has already been confirmed");
+                    return validationResult;
                 }
 
-                if (string.IsNullOrEmpty(user.EmailConfirmationToken))
+                var codeValidationResult = ValidateConfirmationCode(user, request.Code);
+                if (codeValidationResult.IsFailed)
                 {
-                    _logger.LogCritical("Email confirmation failed - no confirmation token found: {UserId}", user.Id);
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("No confirmation code found for this email");
+                    return codeValidationResult;
                 }
 
-                if (user.EmailConfirmationToken != request.Code)
-                {
-                    _logger.LogWarning("Email confirmation failed - invalid confirmation code: {Code}", request.Code);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Invalid confirmation code");
-                }
+                await UpdateUserConfirmationStatus(user, cancellationToken);
 
-                if (user.EmailConfirmationTokenExpiry.HasValue && user.EmailConfirmationTokenExpiry.Value < DateTime.UtcNow)
-                {
-                    _logger.LogWarning("Email confirmation failed - confirmation code expired: {Code} {ExpiredAt}",
-                        user.EmailConfirmationToken, user.EmailConfirmationTokenExpiry.Value);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Confirmation code has expired");
-                }
-
-                _logger.LogDebug("Confirmation code validated successfully, updating user: {UserId}", user.Id);
-
-                user.EmailConfirmed = true;
-                user.EmailConfirmationToken = null;
-                user.EmailConfirmationTokenExpiry = null;
-
-                _logger.LogDebug("Saving user changes to database");
-                await _unitOfWork.UserRepository.UpdateAsync(user, cancellationToken);
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("Email confirmation completed successfully for user {UserId}", user.Id);
-
+                _logger.LogInformation("Email confirmation completed successfully for user: {UserId}", user.Id);
                 return Result.Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Email confirmation failed");
+                _logger.LogError(ex, "Email confirmation failed for user: {UserId}", request.UserId);
 
                 try
                 {
@@ -170,8 +115,127 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
                     _logger.LogError(rollbackEx, "Failed to rollback transaction during email confirmation");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to confirm email due to system error"
+                ));
             }
+        }
+
+        private async Task<Result<User>> GetUserAsync(Guid userId, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving user by ID: {UserId}", userId);
+
+            var user = await _unitOfWork.UserRepository.GetByIdAsync(userId, cancellationToken);
+
+            if (user == null)
+            {
+                _logger.LogWarning("Email confirmation failed - user not found: {UserId}", userId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_FOUND,
+                    "User not found",
+                    new { UserId = userId }
+                ));
+            }
+
+            _logger.LogDebug("User found: {UserId}, Email: {Email}", user.Id, user.Email);
+            return Result.Ok(user);
+        }
+
+        private Result ValidateConfirmationStatus(User user)
+        {
+            _logger.LogDebug("Checking email confirmation status for user: {UserId}", user.Id);
+
+            if (user.EmailConfirmed)
+            {
+                _logger.LogWarning("Email confirmation failed - email already confirmed for user: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.EMAIL_ALREADY_CONFIRMED,
+                    "Email address is already confirmed",
+                    new
+                    {
+                        UserId = user.Id,
+                        Email = user.Email,
+                        NextAction = "You can proceed to complete your account setup"
+                    }
+                ));
+            }
+
+            if (string.IsNullOrEmpty(user.EmailConfirmationToken))
+            {
+                _logger.LogCritical("Email confirmation failed - no token found for user: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CONFIRMATION_TOKEN_NOT_FOUND,
+                    "No confirmation code found for this user",
+                    new
+                    {
+                        UserId = user.Id,
+                        SuggestedAction = "Request a new confirmation code"
+                    }
+                ));
+            }
+
+            return Result.Ok();
+        }
+
+        private Result ValidateConfirmationCode(Domain.Entities.User user, string providedCode)
+        {
+            _logger.LogDebug("Validating confirmation code for user: {UserId}", user.Id);
+
+            if (user.EmailConfirmationTokenExpiry.HasValue &&
+                user.EmailConfirmationTokenExpiry.Value < DateTime.UtcNow)
+            {
+                _logger.LogWarning("Confirmation code expired for user: {UserId}, expired at: {ExpiredAt}",
+                    user.Id, user.EmailConfirmationTokenExpiry.Value);
+
+                var minutesExpired = (int)(DateTime.UtcNow - user.EmailConfirmationTokenExpiry.Value).TotalMinutes;
+
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CONFIRMATION_CODE_EXPIRED,
+                    "Confirmation code has expired",
+                    new
+                    {
+                        UserId = user.Id,
+                        ExpiredAt = user.EmailConfirmationTokenExpiry.Value,
+                        MinutesExpired = minutesExpired,
+                        CanRequestNew = true,
+                        SuggestedAction = "Request a new confirmation code"
+                    }
+                ));
+            }
+
+            if (!string.Equals(user.EmailConfirmationToken, providedCode, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Invalid confirmation code provided for user: {UserId}", user.Id);
+
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.INVALID_CONFIRMATION_CODE,
+                    "Invalid confirmation code",
+                    new
+                    {
+                        UserId = user.Id,
+                        RemainingTime = user.EmailConfirmationTokenExpiry?.Subtract(DateTime.UtcNow).TotalMinutes,
+                        SuggestedAction = "Check your email and enter the correct code"
+                    }
+                ));
+            }
+
+            _logger.LogDebug("Confirmation code validated successfully for user: {UserId}", user.Id);
+            return Result.Ok();
+        }
+
+        private async Task UpdateUserConfirmationStatus(User user, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Updating user confirmation status: {UserId}", user.Id);
+
+            user.EmailConfirmed = true;
+            user.EmailConfirmationToken = null;
+            user.EmailConfirmationTokenExpiry = null;
+
+            await _unitOfWork.UserRepository.UpdateAsync(user, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            _logger.LogDebug("User confirmation status updated successfully: {UserId}", user.Id);
         }
     }
 }
