@@ -1,8 +1,10 @@
 ﻿using Application.CQRS.Users.Queries.Get;
 using Application.Interfaces.Repositories;
 using Application.Interfaces.Services;
+using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -35,35 +37,43 @@ namespace Application.CQRS.Users.Commands.CreateAccount
             RuleFor(x => x.Firstname)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("Firstname is required")
                 .MinimumLength(UserConstants.FirstnameMinLength)
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
                     .WithMessage($"Firstname's length should have minimum {UserConstants.FirstnameMinLength} characters")
                 .MaximumLength(UserConstants.FirstnameMaxLength)
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
                     .WithMessage($"Firstname's length cann't have characters greater than {UserConstants.FirstnameMaxLength}");
 
             RuleFor(x => x.Lastname)
                 .Cascade(CascadeMode.Stop)
                 .MaximumLength(UserConstants.LastnameLength)
+                    .WithErrorCode (ErrorCodes.FIELD_TOO_LONG)
                     .WithMessage($"Lastname's length cann't have characters greater than {UserConstants.LastnameLength}");
 
             RuleFor(x => x.Email)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("Email is required")
                 .EmailAddress()
+                    .WithErrorCode(ErrorCodes.INVALID_FORMAT)
                     .WithMessage("Email address doesn't correct")
                 .Matches(BuildEmailPattern())
+                    .WithErrorCode(ErrorCodes.UNSUPPORTED_EMAIL_DOMAIN)
                     .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
-                //.MustAsync(BeUniqueEmail)
-                //.WithMessage("Email has already been registered with an account");
 
             RuleFor(x => x.Password)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("Password is required")
                 .MinimumLength(UserConstants.PasswordMinLength)
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
                     .WithMessage($"Password's length should have minimum {UserConstants.PasswordMinLength} characters")
                 .MaximumLength(UserConstants.PasswordMaxLength)
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
                     .WithMessage($"Password's length cann't have characters greater than {UserConstants.PasswordMaxLength}");
         }
 
@@ -71,11 +81,6 @@ namespace Application.CQRS.Users.Commands.CreateAccount
         {
             var escapedDomains = EmailConstants.AllowedDomains.Select(d => d.Replace(".", @"\."));
             return $@"^.*@({string.Join("|", escapedDomains)})$";
-        }
-
-        private async Task<bool> BeUniqueEmail(string email, CancellationToken cancellationToken)
-        {
-            return !await _userRepository.EmailExistsAsync(email, cancellationToken);
         }
     }
 
@@ -100,97 +105,150 @@ namespace Application.CQRS.Users.Commands.CreateAccount
 
         public async Task<Result<Guid>> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting account creation proccess");
+            _logger.LogInformation("Starting account creation process for email: {Email}", request.Email);
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                _logger.LogDebug("Checking if user with email {Email} already exists", request.Email);
-                var userByEmail = await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken);
-                if (userByEmail != null)
+                var existingUserResult = await CheckExistingUser(request.Email, cancellationToken);
+                if (existingUserResult.IsFailed)
                 {
-                    _logger.LogWarning("Account creation failed - email alredy exists: {EmailStatus}",
-                        new
-                        {
-                            IsVerified = userByEmail.IsVerified,
-                            EmailConfirmed = userByEmail.EmailConfirmed,
-                            UserId = userByEmail.Id,
-                        });
-
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-
-                    if (userByEmail.IsVerified) 
-                        return Result.Fail("Email has already been used");
-                    else if (userByEmail.EmailConfirmed) 
-                        return Result.Fail("Email has already been confirmed");
-                    else 
-                        return Result.Fail("Email has awated confirmation");
+                    return existingUserResult;
                 }
 
                 _logger.LogDebug("Generating password salt and email confirmation token");
                 var salt = RandomNumberGenerator.GetHexString(64);
                 var emailToken = GenerateEmailConfirmationToken();
 
-                var user = new User
-                {
-                    Id = Guid.NewGuid(),
-                    Firstname = request.Firstname,
-                    Lastname = request.Lastname,
-                    Email = request.Email,
-                    PasswordSalt = salt,
-                    PasswordHash = _passwordHasher.HashPassword(request.Password, salt),
-                    EmailConfirmed = false,
-                    EmailConfirmationToken = emailToken,
-                    EmailConfirmationTokenExpiry = DateTime.UtcNow.AddMinutes(5),
-                };
+                var user = await CreateUser(request);
 
-                _logger.LogDebug("Adding user to database: {UserId}", user.Id);
                 await _unitOfWork.UserRepository.AddAsync(user, cancellationToken);
-
-                _logger.LogDebug("Saving changes to database");
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("User created successfully in database: {UserId}", user.Id);
+                _logger.LogInformation("User created successfully: {UserId}", user.Id);
 
-                _logger.LogDebug("Sending confirmation email");
-                try
-                {
-                    await _emailSender.SendEmailAsync(
-                        email: request.Email,
-                        subject: "Code for confirm email",
-                        htmlMessage: $@"
-                            <h2>Welcome to Ibadgram!</h2>
-                            <p>Code: <span>{emailToken}</span></p>
-                        ");
+                _ = Task.Run(async () => await SendConfirmationEmailAsync(request.Email, user.EmailConfirmationToken), cancellationToken);
 
-                    _logger.LogInformation("Confirmation email sent successfully");
-                }
-                catch (Exception emailEx)
-                {
-                    _logger.LogError(emailEx, "Failed to send confirmation email - user created but email not sent");
-                }
-
-                return user.Id;
+                return Result.Ok(user.Id);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Account creation failed");
+                _logger.LogError(ex, "Account creation failed for email: {Email}", request.Email);
 
                 try
                 {
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    _logger.LogDebug("Transaction rolled back successfully");
                 }
                 catch (Exception rollbackEx)
                 {
-                    _logger.LogError(rollbackEx, "Failed to rollback transaction during create account");
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to create account due to system error"
+                ));
+            }
+        }
+
+        private async Task<Result<Guid>> CheckExistingUser(string email, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Checking existing user for email: {Email}", email);
+
+            var existingUser = await _unitOfWork.UserRepository.GetByEmailAsync(email, cancellationToken);
+
+            if (existingUser == null)
+                return Result.Ok();
+
+            _logger.LogWarning("Account creation failed - email already exists: {EmailStatus}", new
+            {
+                IsVerified = existingUser.IsVerified,
+                EmailConfirmed = existingUser.EmailConfirmed,
+                UserId = existingUser.Id
+            });
+
+            if (existingUser.IsVerified)
+            {
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_ALREADY_VERIFIED,
+                    "An account with this email address already exists and is verified",
+                    new
+                    {
+                        Email = email,
+                        SuggestedAction = "Try signing in or use password recovery",
+                    }
+                ));
+            }
+
+            if (existingUser.EmailConfirmed)
+            {
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.EMAIL_ALREADY_CONFIRMED,
+                    "Email address is already confirmed but account setup is incomplete",
+                    new
+                    {
+                        Email = email,
+                        SuggestedAction = "Complete your account setup",
+                        UserId = existingUser.Id
+                    }
+                ));
+            }
+
+            return Result.Fail(new BusinessLogicError(
+                ErrorCodes.EMAIL_AWAITING_CONFIRMATION,
+                "Email address is already registered and awaiting confirmation",
+                new
+                {
+                    Email = email,
+                    SuggestedAction = "Check your email for confirmation code or request a new one",
+                    TokenExpiry = existingUser.EmailConfirmationTokenExpiry,
+                    CanResend = DateTime.UtcNow > existingUser.EmailConfirmationTokenExpiry?.AddMinutes(-2)
+                }
+            ));
+        }
+
+        private async Task<User> CreateUser(CreateAccountCommand request)
+        {
+            _logger.LogDebug("Creating new user entity");
+
+            var salt = RandomNumberGenerator.GetHexString(64);
+            var emailToken = GenerateEmailConfirmationToken();
+
+            return new User
+            {
+                Id = Guid.NewGuid(),
+                Firstname = request.Firstname,
+                Lastname = request.Lastname,
+                Email = request.Email,
+                PasswordSalt = salt,
+                PasswordHash = _passwordHasher.HashPassword(request.Password, salt),
+                EmailConfirmed = false,
+                EmailConfirmationToken = emailToken,
+                EmailConfirmationTokenExpiry = DateTime.UtcNow.AddMinutes(5),
+            };
+        }
+
+        private async Task SendConfirmationEmailAsync(string email, string token)
+        {
+            try
+            {
+                await _emailSender.SendEmailAsync(
+                    email: email,
+                    subject: "Confirm your email address",
+                    htmlMessage: $@"
+                    <h2>Welcome to Ibadgram!</h2>
+                    <p>Your confirmation code: <strong>{token}</strong></p>
+                    <p>This code will expire in 5 minutes.</p>
+                ");
+
+                _logger.LogInformation("Confirmation email sent successfully to: {Email}", email);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send confirmation email to: {Email}", email);
             }
         }
 
