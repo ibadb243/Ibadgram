@@ -19,10 +19,14 @@ namespace Domain.Common
         public const string USER_NOT_FOUND = "USER_NOT_FOUND";
         public const string USER_ALREADY_VERIFIED = "USER_ALREADY_VERIFIED";
         public const string EMAIL_ALREADY_CONFIRMED = "EMAIL_ALREADY_CONFIRMED";
+        public const string EMAIL_NOT_CONFIRMED = "EMAIL_NOT_CONFIRMED";
         public const string EMAIL_AWAITING_CONFIRMATION = "EMAIL_AWAITING_CONFIRMATION";
         public const string EMAIL_DELIVERY_FAILED = "EMAIL_DELIVERY_FAILED";
         public const string INVALID_CONFIRMATION_CODE = "INVALID_CONFIRMATION_CODE";
         public const string CONFIRMATION_CODE_EXPIRED = "CONFIRMATION_CODE_EXPIRED";
+        public const string INVALID_CONTENT = "USER_ALREADY_VERIFIED";
+        public const string ACCOUNT_ALREADY_COMPLETED = "ACCOUNT_ALREADY_COMPLETED";
+        public const string USERNAME_ALREADY_TAKEN = "USERNAME_ALREADY_TAKEN";
 
         // System errors
         public const string DATABASE_ERROR = "DATABASE_ERROR";
