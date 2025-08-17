@@ -46,10 +46,6 @@ namespace Application.CQRS.Users.Commands.Login
                     .WithMessage("Email address doesn't correct")
                 .Matches(BuildEmailPattern())
                     .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
-                //.MustAsync(BeExistEmail)
-                //.WithMessage("Email not registered")
-                //.MustAsync(BeVerified)
-                //.WithMessage("Email do not pass registration");
 
             RuleFor(x => x.Password)
                 .Cascade(CascadeMode.Stop)
@@ -65,17 +61,6 @@ namespace Application.CQRS.Users.Commands.Login
         {
             var escapedDomains = EmailConstants.AllowedDomains.Select(d => d.Replace(".", @"\."));
             return $@"^.*@({string.Join("|", escapedDomains)})$";
-        }
-
-        private async Task<bool> BeExistEmail(string email, CancellationToken cancellationToken)
-        {
-            return await _userRepository.EmailExistsAsync(email, cancellationToken);
-        }
-
-        private async Task<bool> BeVerified(string email, CancellationToken cancellationToken)
-        {
-            var user = await _userRepository.GetByEmailAsync(email, cancellationToken);
-            return user != null && user.IsVerified;
         }
     }
 
