@@ -237,7 +237,7 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
             return Result.Ok();
         }
 
-        private async Task CompleteUserAccountAsync(Domain.Entities.User user, CompleteAccountCommand request, CancellationToken cancellationToken)
+        private async Task CompleteUserAccountAsync(User user, CompleteAccountCommand request, CancellationToken cancellationToken)
         {
             _logger.LogDebug("Updating user account completion: {UserId}", user.Id);
 

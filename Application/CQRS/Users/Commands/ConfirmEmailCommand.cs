@@ -178,7 +178,7 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
             return Result.Ok();
         }
 
-        private Result ValidateConfirmationCode(Domain.Entities.User user, string providedCode)
+        private Result ValidateConfirmationCode(User user, string providedCode)
         {
             _logger.LogDebug("Validating confirmation code for user: {UserId}", user.Id);
 
