@@ -24,6 +24,7 @@
         };
 
         public const int EmailConfirmationTokenLength = 6;
+        public readonly static TimeSpan EmailConfirmationTokenExpiry = new TimeSpan(0, 5, 0);
     }
 
     public static class ShortnameConstants
