@@ -18,6 +18,9 @@ namespace Domain.Common
         // Business logic errors
         public const string USER_NOT_FOUND = "USER_NOT_FOUND";
         public const string USER_ALREADY_VERIFIED = "USER_ALREADY_VERIFIED";
+        public const string USER_NOT_VERIFIED = "USER_NOT_VERIFIED";
+        public const string USER_DELETED = "USER_DELETED";
+        public const string INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
         public const string EMAIL_ALREADY_CONFIRMED = "EMAIL_ALREADY_CONFIRMED";
         public const string EMAIL_NOT_CONFIRMED = "EMAIL_NOT_CONFIRMED";
         public const string EMAIL_AWAITING_CONFIRMATION = "EMAIL_AWAITING_CONFIRMATION";
@@ -27,6 +30,9 @@ namespace Domain.Common
         public const string INVALID_CONTENT = "USER_ALREADY_VERIFIED";
         public const string ACCOUNT_ALREADY_COMPLETED = "ACCOUNT_ALREADY_COMPLETED";
         public const string USERNAME_ALREADY_TAKEN = "USERNAME_ALREADY_TAKEN";
+        public const string REFRESH_TOKEN_NOT_FOUND = "REFRESH_TOKEN_NOT_FOUND";
+        public const string REFRESH_TOKEN_REVOKED = "REFRESH_TOKEN_REVOKED";
+        public const string REFRESH_TOKEN_EXPIRED = "REFRESH_TOKEN_EXPIRED";
 
         // System errors
         public const string DATABASE_ERROR = "DATABASE_ERROR";

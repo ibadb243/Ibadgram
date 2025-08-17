@@ -1,7 +1,9 @@
 ﻿using Application.Interfaces.Repositories;
 using Application.Interfaces.Services;
+using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -14,47 +16,49 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.Login
 {
-    public class LoginUserCommandResponse
-    {
-        public Guid UserId { get; set; }
-        public string Firstname { get; set; }
-        public string? Lastname { get; set; }
-        public string? Bio { get; set; }
-        public string AccessToken { get; set; }
-        public string RefreshToken { get; set; }
-    }
-
     public class LoginUserCommand : IRequest<Result<LoginUserCommandResponse>>
     {
         public string Email { get; set; }
         public string Password { get; set; }
     }
 
+    public class LoginUserCommandResponse
+    {
+        public Guid UserId { get; set; }
+        public string Firstname { get; set; } = string.Empty;
+        public string? Lastname { get; set; }
+        public string? Bio { get; set; }
+        public string AccessToken { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
+    }
+
     public class LoginUserCommandValidator : AbstractValidator<LoginUserCommand>
     {
-        private readonly IUserRepository _userRepository;
-
-        public LoginUserCommandValidator(IUserRepository userRepository)
+        public LoginUserCommandValidator()
         {
-            _userRepository = userRepository;
-
             RuleFor(x => x.Email)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("Email is required")
                 .EmailAddress()
-                    .WithMessage("Email address doesn't correct")
+                    .WithErrorCode(ErrorCodes.INVALID_FORMAT)
+                    .WithMessage("Email address format is invalid")
                 .Matches(BuildEmailPattern())
-                    .WithMessage("Allowed only Gmail, Yahoo, Yandex and Mail emails");
+                    .WithErrorCode(ErrorCodes.UNSUPPORTED_EMAIL_DOMAIN)
+                    .WithMessage("Only Gmail, Yahoo, Yandex and Mail.ru emails are allowed");
 
             RuleFor(x => x.Password)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("Password is required")
                 .MinimumLength(UserConstants.PasswordMinLength)
-                    .WithMessage($"Password's length should have minimum {UserConstants.PasswordMinLength} characters")
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
+                    .WithMessage($"Password must be at least {UserConstants.PasswordMinLength} characters long")
                 .MaximumLength(UserConstants.PasswordMaxLength)
-                    .WithMessage($"Password's length cann't have characters greater than {UserConstants.PasswordMaxLength}");
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
+                    .WithMessage($"Password cannot exceed {UserConstants.PasswordMaxLength} characters");
         }
 
         private string BuildEmailPattern()
@@ -85,85 +89,46 @@ namespace Application.CQRS.Users.Commands.Login
 
         public async Task<Result<LoginUserCommandResponse>> Handle(LoginUserCommand request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting login proccess");
+            _logger.LogInformation("Starting login process for email: {Email}", request.Email);
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                _logger.LogDebug("Retrieving user by email {Email} from database", request.Email);
-                var user = await _unitOfWork.UserRepository.GetByEmailAsync(request.Email, cancellationToken);
-
-                if (user == null)
+                var userResult = await GetAndValidateUserAsync(request.Email, cancellationToken);
+                if (userResult.IsFailed)
                 {
-                    _logger.LogWarning("Login failed - user not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Invalid email or password!");
+                    return userResult.ToResult();
                 }
 
-                if (!user.IsVerified)
+                var user = userResult.Value;
+
+                var passwordValidationResult = ValidatePassword(user, request.Password);
+                if (passwordValidationResult.IsFailed)
                 {
-                    _logger.LogWarning("Login failed - user isn't verified");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User isn't verified");
+                    return passwordValidationResult;
                 }
 
-                if (user.IsDeleted)
-                {
-                    _logger.LogWarning("Login failed - user is deleted");
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User was deleted");
-                }
-
-                if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordSalt, user.PasswordHash))
-                {
-                    _logger.LogWarning("Login failed - user input wrong password");
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Invalid email or password!");
-                }
-
-                //_logger.LogDebug("Retrieving mention by user {UserId} from database", user.Id); 
-                //var mention = await _unitOfWork.UserMentionRepository.GetByUserIdAsync(user.Id, cancellationToken);
-
-                //if (mention == null)
-                //{
-                //    _logger.LogWarning("Login failed - mention not found");
-                //    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                //    return Result.Fail("Mention not found");
-                //}
-
-                //user.Mention = mention;
-
-                _logger.LogDebug("Parameters validated successfully");
-
-                _logger.LogDebug("Generating Access and Refresh Tokens");
-                var accessToken = _tokenService.GenerateAccessToken(user);
-                var refreshToken = _tokenService.GenerateRefreshToken(user, accessToken);
-
-                _logger.LogDebug("Adding refresh token to database: {RefreshTokenId}", refreshToken.Id);
-                await _unitOfWork.RefreshTokenRepository.AddAsync(refreshToken, cancellationToken);
-
-                _logger.LogDebug("Saving changes to database");
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogDebug("Committing transaction");
+                var tokens = await GenerateTokensAsync(user, cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("User login successfully");
+                _logger.LogInformation("User login successful for user: {UserId}", user.Id);
 
-                return new LoginUserCommandResponse
+                return Result.Ok(new LoginUserCommandResponse
                 {
                     UserId = user.Id,
                     Firstname = user.Firstname,
                     Lastname = user.Lastname,
                     Bio = user.Bio,
-                    AccessToken = accessToken,
-                    RefreshToken = refreshToken.Token,
-                };
+                    AccessToken = tokens.AccessToken,
+                    RefreshToken = tokens.RefreshToken,
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Login failed");
+                _logger.LogError(ex, "Login failed for email: {Email}", request.Email);
 
                 try
                 {
@@ -175,8 +140,84 @@ namespace Application.CQRS.Users.Commands.Login
                     _logger.LogError(rollbackEx, "Failed to rollback transaction during login");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to process login due to system error"
+                ));
             }
+        }
+
+        private async Task<Result<User>> GetAndValidateUserAsync(string email, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving user by email: {Email}", email);
+
+            var user = await _unitOfWork.UserRepository.GetByEmailAsync(email, cancellationToken);
+
+            if (user == null)
+            {
+                _logger.LogWarning("Login failed - user not found for email: {Email}", email);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.INVALID_CREDENTIALS,
+                    "Invalid email or password"
+                ));
+            }
+
+            if (!user.IsVerified)
+            {
+                _logger.LogWarning("Login failed - user not verified: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_VERIFIED,
+                    "User account is not verified",
+                    new
+                    {
+                        UserId = user.Id,
+                        SuggestedAction = "Complete your account setup"
+                    }
+                ));
+            }
+
+            if (user.IsDeleted)
+            {
+                _logger.LogWarning("Login failed - user is deleted: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_DELETED,
+                    "User account has been deleted"
+                ));
+            }
+
+            _logger.LogDebug("User validation successful: {UserId}", user.Id);
+            return Result.Ok(user);
+        }
+
+        private Result ValidatePassword(User user, string password)
+        {
+            _logger.LogDebug("Validating password for user: {UserId}", user.Id);
+
+            if (!_passwordHasher.VerifyPassword(password, user.PasswordSalt, user.PasswordHash))
+            {
+                _logger.LogWarning("Login failed - invalid password for user: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.INVALID_CREDENTIALS,
+                    "Invalid email or password"
+                ));
+            }
+
+            _logger.LogDebug("Password validation successful for user: {UserId}", user.Id);
+            return Result.Ok();
+        }
+
+        private async Task<(string AccessToken, string RefreshToken)> GenerateTokensAsync(User user, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Generating tokens for user: {UserId}", user.Id);
+
+            var accessToken = _tokenService.GenerateAccessToken(user);
+            var refreshToken = _tokenService.GenerateRefreshToken(user, accessToken);
+
+            _logger.LogDebug("Adding refresh token to database: {RefreshTokenId}", refreshToken.Id);
+            await _unitOfWork.RefreshTokenRepository.AddAsync(refreshToken, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return (accessToken, refreshToken.Token);
         }
     }
 }

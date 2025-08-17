@@ -26,8 +26,11 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Creates a new user account
+        /// Creates a new user account and sends email confirmation
         /// </summary>
+        /// <param name="request">Account creation details</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Created user ID and confirmation message</returns>
         [HttpPost("register")]
         public async Task<IActionResult> CreateAccountAsync(
             [FromBody] CreateAccountRequest request,
@@ -39,10 +42,10 @@ namespace WebAPI.Controllers
             {
                 var command = new CreateAccountCommand
                 {
-                    Firstname = request.Firstname,
-                    Lastname = request.Lastname,
-                    Email = request.Email,
-                    Password = request.Password
+                    Firstname = request.Firstname?.Trim() ?? string.Empty,
+                    Lastname = request.Lastname?.Trim(),
+                    Email = request.Email?.Trim() ?? string.Empty,
+                    Password = request.Password ?? string.Empty
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -50,26 +53,30 @@ namespace WebAPI.Controllers
                 if (result.IsSuccess)
                 {
                     _logger.LogInformation("Account created successfully with ID: {UserId}", result.Value);
+
                     return Ok(new
                     {
                         success = true,
                         data = new { userId = result.Value },
-                        message = "Account created successfully. Please check your email for confirmation."
+                        message = "Account created successfully. Please check your email for confirmation code."
                     });
                 }
-                
-                _logger.LogWarning("Account creation failed: {Errors}", string.Join(", ", result.Errors.Select(e => e.Message)));
-                return HandleErrors(result.Errors);
+
+                _logger.LogWarning("Account creation failed for email {Email}: {Errors}",
+                    request.Email, string.Join(", ", result.Errors.Select(e => e.Message)));
+
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during account creation for email: {Email}", request.Email);
+
                 return StatusCode(500, new
                 {
                     success = false,
                     error = new
                     {
-                        code = ErrorCodes.EXTERNAL_SERVICE_ERROR,
+                        code = ErrorCodes.DATABASE_ERROR,
                         message = "An unexpected error occurred during account creation"
                     }
                 });
@@ -79,6 +86,9 @@ namespace WebAPI.Controllers
         /// <summary>
         /// Resends email confirmation code to user
         /// </summary>
+        /// <param name="request">User ID for confirmation resend</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Confirmation of email sent</returns>
         [HttpPost("resend-confirmation")]
         public async Task<IActionResult> ResendConfirmationAsync(
             [FromBody] ResendConfirmationRequest request,
@@ -98,27 +108,46 @@ namespace WebAPI.Controllers
                 if (result.IsSuccess)
                 {
                     _logger.LogInformation("Confirmation code resent successfully for user: {UserId}", request.UserId);
+
                     return Ok(new
                     {
                         success = true,
-                        data = result.Value,
+                        data = new
+                        {
+                            email = result.Value.Email,
+                            tokenExpiresAt = result.Value.TokenExpiresAt
+                        },
+                        message = result.Value.Message
                     });
                 }
 
-                _logger.LogWarning("Resend confirmation failed for user {UserId}: {Errors}", request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+                _logger.LogWarning("Resend confirmation failed for user {UserId}: {Errors}",
+                    request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
-                return HandleResendConfirmationErrors(result.Errors);
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during resend confirmation for email: {Email}", request.Email);
-                return StatusCode(500, new { message = "An unexpected error occurred while resending confirmation" });
+                _logger.LogError(ex, "Unexpected error during resend confirmation for user: {UserId}", request.UserId);
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred while resending confirmation"
+                    }
+                });
             }
         }
 
         /// <summary>
         /// Confirms user email with verification code
         /// </summary>
+        /// <param name="request">User ID and confirmation code</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Confirmation success message</returns>
         [HttpPost("confirm-email")]
         public async Task<IActionResult> ConfirmEmailAsync(
             [FromBody] ConfirmEmailRequest request,
@@ -131,7 +160,7 @@ namespace WebAPI.Controllers
                 var command = new ConfirmEmailCommand
                 {
                     UserId = request.UserId,
-                    Code = request.Code
+                    Code = request.Code?.Trim() ?? string.Empty
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -139,6 +168,7 @@ namespace WebAPI.Controllers
                 if (result.IsSuccess)
                 {
                     _logger.LogInformation("Email confirmed successfully for user: {UserId}", request.UserId);
+
                     return Ok(new
                     {
                         success = true,
@@ -149,17 +179,18 @@ namespace WebAPI.Controllers
                 _logger.LogWarning("Email confirmation failed for user {UserId}: {Errors}",
                     request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
-                return HandleConfirmEmailErrors(result.Errors);
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during email confirmation for user: {UserId}", request.UserId);
+
                 return StatusCode(500, new
                 {
                     success = false,
                     error = new
                     {
-                        code = ErrorCodes.EXTERNAL_SERVICE_ERROR,
+                        code = ErrorCodes.DATABASE_ERROR,
                         message = "An unexpected error occurred during email confirmation"
                     }
                 });
@@ -167,8 +198,11 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Completes account setup with shortname and bio
+        /// Completes account setup with username and optional bio
         /// </summary>
+        /// <param name="request">Account completion details</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Completed account confirmation</returns>
         [HttpPost("complete-account")]
         public async Task<IActionResult> CompleteAccountAsync(
             [FromBody] CompleteAccountRequest request,
@@ -181,8 +215,8 @@ namespace WebAPI.Controllers
                 var command = new CompleteAccountCommand
                 {
                     UserId = request.UserId,
-                    Shortname = request.Shortname.Trim(),
-                    Bio = request.Bio?.Trim()
+                    Shortname = request.Shortname?.Trim() ?? string.Empty,
+                    Bio = string.IsNullOrWhiteSpace(request.Bio) ? null : request.Bio.Trim()
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -190,6 +224,7 @@ namespace WebAPI.Controllers
                 if (result.IsSuccess)
                 {
                     _logger.LogInformation("Account setup completed successfully for user: {UserId}", result.Value);
+
                     return Ok(new
                     {
                         success = true,
@@ -201,17 +236,18 @@ namespace WebAPI.Controllers
                 _logger.LogWarning("Account completion failed for user {UserId}: {Errors}",
                     request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
-                return HandleCompleteAccountErrors(result.Errors);
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during account completion for user: {UserId}", request.UserId);
+
                 return StatusCode(500, new
                 {
                     success = false,
                     error = new
                     {
-                        code = ErrorCodes.EXTERNAL_SERVICE_ERROR,
+                        code = ErrorCodes.DATABASE_ERROR,
                         message = "An unexpected error occurred during account completion"
                     }
                 });
@@ -221,6 +257,9 @@ namespace WebAPI.Controllers
         /// <summary>
         /// Authenticates user and returns access and refresh tokens
         /// </summary>
+        /// <param name="request">Login credentials</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>User information and authentication tokens</returns>
         [HttpPost("login")]
         public async Task<IActionResult> LoginAsync(
             [FromBody] LoginRequest request,
@@ -232,8 +271,8 @@ namespace WebAPI.Controllers
             {
                 var command = new LoginUserCommand
                 {
-                    Email = request.Email,
-                    Password = request.Password
+                    Email = request.Email?.Trim() ?? string.Empty,
+                    Password = request.Password ?? string.Empty
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -243,8 +282,8 @@ namespace WebAPI.Controllers
                     var response = result.Value;
                     _logger.LogInformation("User logged in successfully: {UserId}", response.UserId);
 
-                    this.HttpContext.Response.Cookies.Append("access_token", response.AccessToken);
-                    this.HttpContext.Response.Cookies.Append("refresh_token", response.RefreshToken);
+                    // Set secure HTTP-only cookies
+                    SetSecureTokenCookies(response.AccessToken, response.RefreshToken);
 
                     return Ok(new LoginResponse
                     {
@@ -259,18 +298,31 @@ namespace WebAPI.Controllers
 
                 _logger.LogWarning("Login failed for email {Email}: {Errors}",
                     request.Email, string.Join(", ", result.Errors.Select(e => e.Message)));
-                return BadRequest(new { errors = result.Errors.ToDictionary(k => ((string)k.Metadata["PropertyName"]).ToLower(), v => v.Message) });
+
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during login for email: {Email}", request.Email);
-                return StatusCode(500, new { message = "An unexpected error occurred during login" });
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred during login"
+                    }
+                });
             }
         }
 
         /// <summary>
         /// Refreshes access token using refresh token
         /// </summary>
+        /// <param name="request">Refresh token</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>New access and refresh tokens</returns>
         [HttpPost("refresh")]
         public async Task<IActionResult> RefreshTokenAsync(
             [FromBody] RefreshTokenRequest request,
@@ -282,7 +334,7 @@ namespace WebAPI.Controllers
             {
                 var command = new RefreshTokenCommand
                 {
-                    RefreshToken = request.RefreshToken
+                    RefreshToken = request.RefreshToken?.Trim() ?? string.Empty
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -292,8 +344,8 @@ namespace WebAPI.Controllers
                     var response = result.Value;
                     _logger.LogInformation("Token refreshed successfully");
 
-                    this.HttpContext.Response.Cookies.Append("access_token", response.AccessToken);
-                    this.HttpContext.Response.Cookies.Append("refresh_token", response.RefreshToken);
+                    // Update secure HTTP-only cookies
+                    SetSecureTokenCookies(response.AccessToken, response.RefreshToken);
 
                     return Ok(new Models.DTOs.Auth.RefreshTokenResponse
                     {
@@ -302,25 +354,72 @@ namespace WebAPI.Controllers
                     });
                 }
 
-                _logger.LogWarning("Token refresh failed: {Errors}", string.Join(", ", result.Errors.Select(e => e.Message)));
-                return BadRequest(new { errors = result.Errors.ToDictionary(k => ((string)k.Metadata["PropertyName"]).ToLower(), v => v.Message) });
+                _logger.LogWarning("Token refresh failed: {Errors}",
+                    string.Join(", ", result.Errors.Select(e => e.Message)));
+
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during token refresh");
-                return StatusCode(500, new { message = "An unexpected error occurred during token refresh" });
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred during token refresh"
+                    }
+                });
             }
         }
 
-        private IActionResult HandleResendConfirmationErrors(IReadOnlyList<IError> errors)
+        /// <summary>
+        /// Logs out user by clearing authentication cookies
+        /// </summary>
+        /// <returns>Logout confirmation</returns>
+        [HttpPost("logout")]
+        public IActionResult Logout()
         {
-            // ...
+            _logger.LogInformation("Logout request received");
 
-            // Fallback for validation errors
-            return HandleErrors(errors);
+            try
+            {
+                // Clear authentication cookies
+                ClearTokenCookies();
+
+                _logger.LogInformation("User logged out successfully");
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Logged out successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during logout");
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred during logout"
+                    }
+                });
+            }
         }
 
-        private IActionResult HandleCompleteAccountErrors(IReadOnlyList<IError> errors)
+
+        #region Private Helper Methods
+
+        /// <summary>
+        /// Handles business logic errors with appropriate HTTP status codes
+        /// </summary>
+        private IActionResult HandleBusinessErrors(IReadOnlyList<IError> errors)
         {
             foreach (var error in errors)
             {
@@ -329,215 +428,119 @@ namespace WebAPI.Controllers
                     var errorCode = code.ToString();
                     var additionalData = error.Metadata.TryGetValue("AdditionalData", out var data) ? data : null;
 
+                    var errorResponse = new
+                    {
+                        success = false,
+                        error = new
+                        {
+                            code = errorCode,
+                            message = error.Message,
+                            additional_data = additionalData
+                        }
+                    };
+
                     return errorCode switch
                     {
-                        ErrorCodes.USER_NOT_FOUND => NotFound(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
+                        // Not Found Errors (404)
+                        ErrorCodes.USER_NOT_FOUND => NotFound(errorResponse),
+                        ErrorCodes.CONFIRMATION_TOKEN_NOT_FOUND => NotFound(errorResponse),
+                        ErrorCodes.REFRESH_TOKEN_NOT_FOUND => NotFound(errorResponse),
 
-                        ErrorCodes.EMAIL_NOT_CONFIRMED => BadRequest(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
+                        // Bad Request Errors (400)
+                        ErrorCodes.EMAIL_NOT_CONFIRMED => BadRequest(errorResponse),
+                        ErrorCodes.CONFIRMATION_CODE_EXPIRED => BadRequest(errorResponse),
+                        ErrorCodes.INVALID_CONFIRMATION_CODE => BadRequest(errorResponse),
+                        ErrorCodes.REFRESH_TOKEN_EXPIRED => BadRequest(errorResponse),
+                        ErrorCodes.REFRESH_TOKEN_REVOKED => BadRequest(errorResponse),
 
-                        ErrorCodes.ACCOUNT_ALREADY_COMPLETED => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
+                        // Unauthorized Errors (401)
+                        ErrorCodes.INVALID_CREDENTIALS => Unauthorized(errorResponse),
+                        ErrorCodes.USER_NOT_VERIFIED => Unauthorized(errorResponse),
 
-                        ErrorCodes.USERNAME_ALREADY_TAKEN => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
+                        // Conflict Errors (409)
+                        ErrorCodes.USER_ALREADY_VERIFIED => Conflict(errorResponse),
+                        ErrorCodes.EMAIL_ALREADY_CONFIRMED => Conflict(errorResponse),
+                        ErrorCodes.EMAIL_AWAITING_CONFIRMATION => Conflict(errorResponse),
+                        ErrorCodes.ACCOUNT_ALREADY_COMPLETED => Conflict(errorResponse),
+                        ErrorCodes.USERNAME_ALREADY_TAKEN => Conflict(errorResponse),
 
-                        _ => StatusCode(500, new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message
-                            }
-                        })
+                        // Gone Errors (410)
+                        ErrorCodes.USER_DELETED => StatusCode(410, errorResponse),
+
+                        // Internal Server Errors (500)
+                        ErrorCodes.DATABASE_ERROR => StatusCode(500, errorResponse),
+
+                        // Default to Bad Request for validation errors
+                        _ => BadRequest(errorResponse)
                     };
                 }
             }
 
-            // Fallback for validation errors
-            return HandleErrors(errors);
+            // Handle validation errors (FluentValidation)
+            return HandleValidationErrors(errors);
         }
 
-        private IActionResult HandleConfirmEmailErrors(IReadOnlyList<IError> errors)
+        /// <summary>
+        /// Handles FluentValidation errors
+        /// </summary>
+        private IActionResult HandleValidationErrors(IReadOnlyList<IError> errors)
         {
+            var validationErrors = new Dictionary<string, object>();
+
             foreach (var error in errors)
             {
-                if (error.Metadata.TryGetValue("ErrorCode", out var code))
+                var errorCode = error.Metadata.TryGetValue("ErrorCode", out var code) ? code.ToString() : "VALIDATION_ERROR";
+                var propertyName = error.Metadata.TryGetValue("PropertyName", out var prop) ? prop.ToString()?.ToLowerInvariant() : "unknown";
+                var attemptedValue = error.Metadata.TryGetValue("AttemptedValue", out var value) ? value : null;
+
+                validationErrors[propertyName ?? "unknown"] = new
                 {
-                    var errorCode = code.ToString();
-                    var additionalData = error.Metadata.TryGetValue("AdditionalData", out var data) ? data : null;
-
-                    return errorCode switch
-                    {
-                        ErrorCodes.USER_NOT_FOUND => NotFound(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-
-                        ErrorCodes.EMAIL_ALREADY_CONFIRMED => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-
-                        ErrorCodes.CONFIRMATION_CODE_EXPIRED => BadRequest(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-
-                        ErrorCodes.INVALID_CONFIRMATION_CODE => BadRequest(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-
-                        _ => StatusCode(500, new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message
-                            }
-                        })
-                    };
-                }
+                    code = errorCode,
+                    message = error.Message,
+                    attempted_value = attemptedValue
+                };
             }
 
-            // Fallback for validation errors
-            return HandleErrors(errors);
-        }
-
-        private IActionResult HandleErrors(IReadOnlyList<IError> errors)
-        {
-            var response = new
+            return BadRequest(new
             {
                 success = false,
-                errors = new Dictionary<string, object>()
+                errors = validationErrors
+            });
+        }
+
+        /// <summary>
+        /// Sets secure HTTP-only cookies for authentication tokens
+        /// </summary>
+        private void SetSecureTokenCookies(string accessToken, string refreshToken)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
             };
 
-            foreach (var error in errors)
-            {
-                var errorCode = error.Metadata.TryGetValue("ErrorCode", out var code) ? code.ToString() : "UNKNOWN_ERROR";
-
-                if (error.Metadata.TryGetValue("PropertyName", out var propertyName))
-                {
-                    // Validation error
-                    response.errors[propertyName.ToString().ToLower()] = new
-                    {
-                        code = errorCode,
-                        message = error.Message,
-                        attempted_value = error.Metadata.TryGetValue("AttemptedValue", out var value) ? value : null
-                    };
-                }
-                else
-                {
-                    // Business logic error
-                    var additionalData = error.Metadata.TryGetValue("AdditionalData", out var data) ? data : null;
-
-                    return errorCode switch
-                    {
-                        ErrorCodes.USER_ALREADY_VERIFIED => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-                        ErrorCodes.EMAIL_ALREADY_CONFIRMED => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-                        ErrorCodes.EMAIL_AWAITING_CONFIRMATION => Conflict(new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        }),
-                        _ => StatusCode(500, new
-                        {
-                            success = false,
-                            error = new
-                            {
-                                code = errorCode,
-                                message = error.Message,
-                                additional_data = additionalData
-                            }
-                        })
-                    };
-                }
-            }
-
-            return BadRequest(response);
+            HttpContext.Response.Cookies.Append("access_token", accessToken, cookieOptions);
+            HttpContext.Response.Cookies.Append("refresh_token", refreshToken, cookieOptions);
         }
+
+        /// <summary>
+        /// Clears authentication token cookies
+        /// </summary>
+        private void ClearTokenCookies()
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTimeOffset.UtcNow.AddDays(-1)
+            };
+
+            HttpContext.Response.Cookies.Append("access_token", string.Empty, cookieOptions);
+            HttpContext.Response.Cookies.Append("refresh_token", string.Empty, cookieOptions);
+        }
+
+        #endregion
     }
 }
