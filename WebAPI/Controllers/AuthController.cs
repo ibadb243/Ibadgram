@@ -2,6 +2,7 @@
 using Application.CQRS.Users.Commands.ConfirmEmail;
 using Application.CQRS.Users.Commands.CreateAccount;
 using Application.CQRS.Users.Commands.Login;
+using Application.CQRS.Users.Commands.Logout;
 using Application.CQRS.Users.Commands.Refresh;
 using Application.CQRS.Users.Commands.UpdateConfirmEmailToken;
 using Domain.Common;
@@ -10,6 +11,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
 using WebAPI.Extensions;
 using WebAPI.Models.DTOs.Auth;
 
@@ -417,23 +419,38 @@ namespace WebAPI.Controllers
         /// </summary>
         /// <returns>Logout confirmation</returns>
         [HttpPost("logout")]
-        [Authorize(Policy = "Standart")]
-        public IActionResult Logout()
+        public async Task<IActionResult> Logout()
         {
             _logger.LogInformation("Logout request received");
 
             try
             {
-                // Clear authentication cookies
-                ClearTokenCookies();
-
-                _logger.LogInformation("User logged out successfully");
-
-                return Ok(new
+                var command = new LogoutUserCommand
                 {
-                    success = true,
-                    message = "Logged out successfully"
-                });
+                    AccessToken = GetAccessToken().Trim(),
+                    RefreshToken = GetRefreshToken().Trim(),
+                };
+
+                var result = await Mediator.Send(command);
+
+                if (result.IsSuccess)
+                {
+                    // Clear authentication cookies
+                    ClearTokenCookies();
+
+                    _logger.LogInformation("User logged out successfully");
+
+                    return Ok(new
+                    {
+                        success = true,
+                        message = "Logged out successfully"
+                    });
+                }
+
+                _logger.LogWarning("Token delete failed: {Errors}",
+                    string.Join(", ", result.Errors.Select(e => e.Message)));
+
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
@@ -546,6 +563,17 @@ namespace WebAPI.Controllers
             });
         }
 
+        /// <summary>
+        /// Get access token from cookies
+        /// </summary>
+        private string GetAccessToken()
+        {
+            return HttpContext.Request.Cookies.FirstOrDefault(c => c.Key == "access_token").Value;
+        }
+
+        /// <summary>
+        /// Get refresh token from cookies
+        /// </summary>
         private string GetRefreshToken()
         {
             return HttpContext.Request.Cookies.FirstOrDefault(c => c.Key == "refresh_token").Value;

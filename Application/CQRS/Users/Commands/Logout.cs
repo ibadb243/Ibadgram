@@ -1,5 +1,7 @@
 ﻿using Application.Interfaces.Repositories;
 using Domain.Common;
+using Domain.Entities;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -36,38 +38,65 @@ namespace Application.CQRS.Users.Commands.Logout
         }
     }
 
-    //public class LogoutUserCommandHandler : IRequestHandler<LogoutUserCommand, Result>
-    //{
-    //    private readonly IUnitOfWork _unitOfWork;
-    //    private readonly ILogger<LogoutUserCommandHandler> _logger;
+    public class LogoutUserCommandHandler : IRequestHandler<LogoutUserCommand, Result>
+    {
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<LogoutUserCommandHandler> _logger;
 
-    //    public LogoutUserCommandHandler(
-    //        IUnitOfWork unitOfWork,
-    //        ILogger<LogoutUserCommandHandler> logger)
-    //    {
-    //        _unitOfWork = unitOfWork;
-    //        _logger = logger;
-    //    }
+        public LogoutUserCommandHandler(
+            IUnitOfWork unitOfWork,
+            ILogger<LogoutUserCommandHandler> logger)
+        {
+            _unitOfWork = unitOfWork;
+            _logger = logger;
+        }
 
-    //    public async Task<Result> Handle(LogoutUserCommand request, CancellationToken cancellationToken)
-    //    {
-    //        _logger.LogInformation("Starting logout proccess: {AccessToken}", request.AccessToken);
+        public async Task<Result> Handle(LogoutUserCommand request, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Starting logout proccess: {AccessToken}", request.AccessToken);
 
-    //        await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
-    //        try
-    //        {
-    //            var refreshToken = await _unitOfWork.RefreshTokenRepository.GetByTokenAsync(request.RefreshToken);
-    //            if (refreshToken == null)
-    //            {
+            try
+            {
+                var refreshToken = await _unitOfWork.RefreshTokenRepository.GetByTokenAsync(request.RefreshToken);
+                if (refreshToken == null)
+                {
+                    _logger.LogWarning("Refresh token failed - token not found");
+                    return Result.Fail(new BusinessLogicError(
+                        ErrorCodes.REFRESH_TOKEN_NOT_FOUND,
+                        "Refresh token not found"
+                    ));
+                }
 
-    //            }
-    //        }
-    //        catch (Exception ex)
-    //        {
+                await _unitOfWork.RefreshTokenRepository.DeleteAsync(refreshToken.Id, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-    //            throw;
-    //        }
-    //    }
-    //}
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                _logger.LogInformation("Refresh token deleted successfully for user: {UserId}", refreshToken.UserId);
+
+                return Result.Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Logout failed");
+
+                try
+                {
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    _logger.LogDebug("Transaction rolled back successfully");
+                }
+                catch (Exception rollbackEx)
+                {
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction during delete token");
+                }
+
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to delete token due to system error"
+                ));
+            }
+        }
+    }
 }
