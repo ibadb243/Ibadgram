@@ -26,6 +26,15 @@ namespace WebAPI.Extensions
                 };
             });
 
+            services.AddAuthorization(options =>
+            {
+                options.AddPolicy("PendingRegistration", policy => 
+                    policy.RequireClaim("rs", "pe", "pc"));
+
+                options.AddPolicy("Standart", policy =>
+                    policy.RequireClaim("us", "s"));
+            });
+
             return services;
         }
     }

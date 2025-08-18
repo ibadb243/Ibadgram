@@ -10,6 +10,7 @@ namespace Application.Interfaces.Services
     public interface ITokenService
     {
         string GenerateAccessToken(User user);
+        string GenerateTemporaryToken(Guid userId, string stage);
         RefreshToken GenerateRefreshToken(User user, string accessToken);
         RefreshToken UpdateRefreshToken(RefreshToken refreshToken, string accessToken);
     }

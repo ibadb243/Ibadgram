@@ -41,7 +41,7 @@ namespace Application.Services
                 new(JwtRegisteredClaimNames.Sid, user.Id.ToString()),
                 new(JwtRegisteredClaimNames.Name, user.Firstname),
                 new(JwtRegisteredClaimNames.FamilyName, user.Lastname),
-                new(JwtRegisteredClaimNames.UniqueName, user.Mention.Shortname),
+                new("us", "s"),
             };
 
             var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
@@ -49,6 +49,26 @@ namespace Application.Services
             var token = new JwtSecurityToken(
                 claims: claims,
                 expires: DateTime.UtcNow + _accessTokenLifetime,
+                signingCredentials: creds,
+                issuer: _configuration["Jwt:Issuer"],
+                audience: _configuration["Jwt:Audience"]);
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public string GenerateTemporaryToken(Guid userId, string stage)
+        {
+            var claims = new List<Claim>()
+            {
+                new(JwtRegisteredClaimNames.Sid, userId.ToString()),
+                new("rs", stage),
+            };
+
+            var creds = new SigningCredentials(_key, SecurityAlgorithms.HmacSha512Signature);
+
+            var token = new JwtSecurityToken(
+                claims: claims,
+                expires: DateTime.UtcNow.AddMinutes(60),
                 signingCredentials: creds,
                 issuer: _configuration["Jwt:Issuer"],
                 audience: _configuration["Jwt:Audience"]);
