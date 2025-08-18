@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces.Repositories;
+using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
@@ -16,21 +17,23 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.CompleteAccount
 {
-    public class CompleteAccountCommand : IRequest<Result<Guid>>
+    public class CompleteAccountCommand : IRequest<Result<CompleteAccountCommandResponse>>
     {
         public Guid UserId { get; set; }
-        public string Shortname { get; set; }
+        public string Shortname { get; set; } = string.Empty;
         public string? Bio { get; set; }
+    }
+
+    public class CompleteAccountCommandResponse
+    {
+        public string AccessToken { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
     }
 
     public class CompleteAccountCommandValidator : AbstractValidator<CompleteAccountCommand>
     {
-        private readonly IMentionRepository _mentionRepository;
-
-        public CompleteAccountCommandValidator(IMentionRepository mentionRepository)
+        public CompleteAccountCommandValidator()
         {
-            _mentionRepository = mentionRepository;
-
             RuleFor(x => x.UserId)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
@@ -92,20 +95,23 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
         }
     }
 
-    public class CompleteAccountCommandHandler : IRequestHandler<CompleteAccountCommand, Result<Guid>>
+    public class CompleteAccountCommandHandler : IRequestHandler<CompleteAccountCommand, Result<CompleteAccountCommandResponse>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ITokenService _tokenService;
         private readonly ILogger<CompleteAccountCommandHandler> _logger;
 
         public CompleteAccountCommandHandler(
             IUnitOfWork unitOfWork,
+            ITokenService tokenService,
             ILogger<CompleteAccountCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _tokenService = tokenService;
             _logger = logger;
         }
 
-        public async Task<Result<Guid>> Handle(CompleteAccountCommand request, CancellationToken cancellationToken)
+        public async Task<Result<CompleteAccountCommandResponse>> Handle(CompleteAccountCommand request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Starting account completion process for user: {UserId}", request.UserId);
 
@@ -129,6 +135,8 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
                     return shortnameResult;
                 }
 
+                var tokens = await GenerateTokensAsync(user, cancellationToken);
+
                 await CompleteUserAccountAsync(user, request, cancellationToken);
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
@@ -136,7 +144,11 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
                 _logger.LogInformation("Account completion successful for user: {UserId} with username: {Username}",
                     user.Id, request.Shortname);
 
-                return Result.Ok(user.Id);
+                return Result.Ok(new CompleteAccountCommandResponse
+                {
+                    AccessToken = tokens.AccessToken,
+                    RefreshToken = tokens.RefreshToken,
+                });
             }
             catch (Exception ex)
             {
@@ -235,6 +247,19 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
 
             _logger.LogDebug("Username available: {Username}", shortname);
             return Result.Ok();
+        }
+
+        private async Task<(string AccessToken, string RefreshToken)> GenerateTokensAsync(User user, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Generating tokens for user: {UserId}", user.Id);
+
+            var accessToken = _tokenService.GenerateAccessToken(user);
+            var refreshToken = _tokenService.GenerateRefreshToken(user, accessToken);
+
+            _logger.LogDebug("Adding refresh token to database: {RefreshTokenId}", refreshToken.Id);
+            await _unitOfWork.RefreshTokenRepository.AddAsync(refreshToken, cancellationToken);
+
+            return (accessToken, refreshToken.Token);
         }
 
         private async Task CompleteUserAccountAsync(User user, CompleteAccountCommand request, CancellationToken cancellationToken)

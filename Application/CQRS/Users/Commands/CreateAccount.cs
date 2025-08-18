@@ -18,22 +18,23 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.CreateAccount
 {
-    public class CreateAccountCommand : IRequest<Result<Guid>>
+    public class CreateAccountCommand : IRequest<Result<CreateAccountCommandResponse>>
     {
-        public string Firstname { get; set; }
+        public string Firstname { get; set; } = string.Empty;
         public string? Lastname { get; set; }
-        public string Email { get; set; }
-        public string Password { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class CreateAccountCommandResponse
+    {
+        public string TemporaryAccessToken { get; set; } = string.Empty;
     }
 
     public class CreateAccountCommandValidator : AbstractValidator<CreateAccountCommand>
     {
-        private readonly IUserRepository _userRepository;
-
-        public CreateAccountCommandValidator(IUserRepository userRepository)
+        public CreateAccountCommandValidator()
         {
-            _userRepository = userRepository;
-
             RuleFor(x => x.Firstname)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
@@ -84,26 +85,29 @@ namespace Application.CQRS.Users.Commands.CreateAccount
         }
     }
 
-    public class CreateAccountCommandHandler : IRequestHandler<CreateAccountCommand, Result<Guid>>
+    public class CreateAccountCommandHandler : IRequestHandler<CreateAccountCommand, Result<CreateAccountCommandResponse>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly IPasswordHasher _passwordHasher;
+        private readonly ITokenService _tokenService;
         private readonly IEmailSender _emailSender;
         private readonly ILogger<CreateAccountCommandHandler> _logger;
 
         public CreateAccountCommandHandler(
             IUnitOfWork unitOfWork,
             IPasswordHasher passwordHasher,
+            ITokenService tokenService,
             IEmailSender emailSender,
             ILogger<CreateAccountCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
             _passwordHasher = passwordHasher;
+            _tokenService = tokenService;
             _emailSender = emailSender;
             _logger = logger;
         }
 
-        public async Task<Result<Guid>> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
+        public async Task<Result<CreateAccountCommandResponse>> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Starting account creation process for email: {Email}", request.Email);
 
@@ -115,7 +119,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
                 if (existingUserResult.IsFailed)
                 {
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return existingUserResult;
+                    return existingUserResult.ToResult();
                 }
 
                 _logger.LogDebug("Generating password salt and email confirmation token");
@@ -132,7 +136,12 @@ namespace Application.CQRS.Users.Commands.CreateAccount
 
                 _ = Task.Run(async () => await SendConfirmationEmailAsync(request.Email, user.EmailConfirmationToken), cancellationToken);
 
-                return Result.Ok(user.Id);
+                var tempAccessToken = _tokenService.GenerateTemporaryToken(user.Id, "pe");
+
+                return Result.Ok(new CreateAccountCommandResponse
+                {
+                    TemporaryAccessToken = tempAccessToken,
+                });
             }
             catch (Exception ex)
             {

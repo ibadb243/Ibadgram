@@ -1,4 +1,5 @@
 ﻿using Application.Interfaces.Repositories;
+using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
@@ -16,20 +17,21 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.ConfirmEmail
 {
-    public class ConfirmEmailCommand : IRequest<Result>
+    public class ConfirmEmailCommand : IRequest<Result<ConfirmEmailCommandResponse>>
     {
         public Guid UserId { get; set; }
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
+    }
+
+    public class ConfirmEmailCommandResponse
+    {
+        public string TemporaryAccessToken { get; set; } = string.Empty;
     }
 
     public class ConfirmEmailCommandValidator : AbstractValidator<ConfirmEmailCommand>
     {
-        private readonly IUserRepository _userRepository;
-
-        public ConfirmEmailCommandValidator(IUserRepository userRepository)
+        public ConfirmEmailCommandValidator()
         {
-            _userRepository = userRepository;
-
             RuleFor(x => x.UserId)
                 .Cascade(CascadeMode.Stop)
                 .NotEmpty()
@@ -50,20 +52,23 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
         }
     }
 
-    public class ConfirmEmailCommandHandler : IRequestHandler<ConfirmEmailCommand, Result>
+    public class ConfirmEmailCommandHandler : IRequestHandler<ConfirmEmailCommand, Result<ConfirmEmailCommandResponse>>
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ITokenService _tokenService;
         private readonly ILogger<ConfirmEmailCommandHandler> _logger;
 
         public ConfirmEmailCommandHandler(
             IUnitOfWork unitOfWork,
+            ITokenService tokenService,
             ILogger<ConfirmEmailCommandHandler> logger)
         {
             _unitOfWork = unitOfWork;
+            _tokenService = tokenService;
             _logger = logger;
         }
 
-        public async Task<Result> Handle(ConfirmEmailCommand request, CancellationToken cancellationToken)
+        public async Task<Result<ConfirmEmailCommandResponse>> Handle(ConfirmEmailCommand request, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Starting email confirmation process for user: {UserId}", request.UserId);
 
@@ -99,7 +104,13 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 _logger.LogInformation("Email confirmation completed successfully for user: {UserId}", user.Id);
-                return Result.Ok();
+
+                var tempAccessToken = _tokenService.GenerateTemporaryToken(user.Id, "pc");
+
+                return Result.Ok(new ConfirmEmailCommandResponse
+                {
+                    TemporaryAccessToken = tempAccessToken,
+                });
             }
             catch (Exception ex)
             {
