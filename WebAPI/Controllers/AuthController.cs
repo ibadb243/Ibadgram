@@ -7,7 +7,10 @@ using Application.CQRS.Users.Commands.UpdateConfirmEmailToken;
 using Domain.Common;
 using FluentResults;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using WebAPI.Extensions;
 using WebAPI.Models.DTOs.Auth;
 
 namespace WebAPI.Controllers
@@ -19,11 +22,16 @@ namespace WebAPI.Controllers
     {
         private readonly ILogger<AuthController> _logger;
 
-        public AuthController(IMediator mediator, ILogger<AuthController> logger)
-            : base(mediator)
+        public AuthController(
+            IMediator mediator,
+            ILogger<AuthController> logger)
+                : base(mediator)
         {
             _logger = logger;
         }
+
+
+
 
         /// <summary>
         /// Creates a new user account and sends email confirmation
@@ -54,10 +62,12 @@ namespace WebAPI.Controllers
                 {
                     _logger.LogInformation("Account created successfully with ID: {UserId}", result.Value);
 
+                    // Set secure HTTP-only cookies
+                    SetSecureTemporaryTokenCookie(result.Value.TemporaryAccessToken);
+
                     return Ok(new
                     {
                         success = true,
-                        data = new { userId = result.Value },
                         message = "Account created successfully. Please check your email for confirmation code."
                     });
                 }
@@ -83,31 +93,35 @@ namespace WebAPI.Controllers
             }
         }
 
+
+
+
         /// <summary>
         /// Resends email confirmation code to user
         /// </summary>
-        /// <param name="request">User ID for confirmation resend</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Confirmation of email sent</returns>
         [HttpPost("resend-confirmation")]
+        [Authorize(Policy = "PendingRegistration")]
         public async Task<IActionResult> ResendConfirmationAsync(
-            [FromBody] ResendConfirmationRequest request,
             CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Resend confirmation request received for user: {UserId}", request.UserId);
+            var userId = User.GetUserId();
+
+            _logger.LogInformation("Resend confirmation request received for user: {UserId}", userId);
 
             try
             {
                 var command = new UpdateConfirmEmailTokenCommand
                 {
-                    UserId = request.UserId
+                    UserId = userId,
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
 
                 if (result.IsSuccess)
                 {
-                    _logger.LogInformation("Confirmation code resent successfully for user: {UserId}", request.UserId);
+                    _logger.LogInformation("Confirmation code resent successfully for user: {UserId}", userId);
 
                     return Ok(new
                     {
@@ -122,13 +136,13 @@ namespace WebAPI.Controllers
                 }
 
                 _logger.LogWarning("Resend confirmation failed for user {UserId}: {Errors}",
-                    request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    userId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
                 return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during resend confirmation for user: {UserId}", request.UserId);
+                _logger.LogError(ex, "Unexpected error during resend confirmation for user: {UserId}", userId);
 
                 return StatusCode(500, new
                 {
@@ -142,6 +156,9 @@ namespace WebAPI.Controllers
             }
         }
 
+
+
+
         /// <summary>
         /// Confirms user email with verification code
         /// </summary>
@@ -149,17 +166,20 @@ namespace WebAPI.Controllers
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Confirmation success message</returns>
         [HttpPost("confirm-email")]
+        [Authorize(Policy = "PendingRegistration")]
         public async Task<IActionResult> ConfirmEmailAsync(
             [FromBody] ConfirmEmailRequest request,
             CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Email confirmation request received for user: {UserId}", request.UserId);
+            var userId = User.GetUserId();
+
+            _logger.LogInformation("Email confirmation request received for user: {UserId}", userId);
 
             try
             {
                 var command = new ConfirmEmailCommand
                 {
-                    UserId = request.UserId,
+                    UserId = userId,
                     Code = request.Code?.Trim() ?? string.Empty
                 };
 
@@ -167,7 +187,10 @@ namespace WebAPI.Controllers
 
                 if (result.IsSuccess)
                 {
-                    _logger.LogInformation("Email confirmed successfully for user: {UserId}", request.UserId);
+                    _logger.LogInformation("Email confirmed successfully for user: {UserId}", userId);
+
+                    // Set secure HTTP-only cookies
+                    SetSecureTemporaryTokenCookie(result.Value.TemporaryAccessToken);
 
                     return Ok(new
                     {
@@ -177,13 +200,13 @@ namespace WebAPI.Controllers
                 }
 
                 _logger.LogWarning("Email confirmation failed for user {UserId}: {Errors}",
-                    request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    userId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
                 return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during email confirmation for user: {UserId}", request.UserId);
+                _logger.LogError(ex, "Unexpected error during email confirmation for user: {UserId}", userId);
 
                 return StatusCode(500, new
                 {
@@ -197,6 +220,9 @@ namespace WebAPI.Controllers
             }
         }
 
+
+
+
         /// <summary>
         /// Completes account setup with username and optional bio
         /// </summary>
@@ -204,17 +230,20 @@ namespace WebAPI.Controllers
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Completed account confirmation</returns>
         [HttpPost("complete-account")]
+        [Authorize(Policy = "PendingRegistration")]
         public async Task<IActionResult> CompleteAccountAsync(
             [FromBody] CompleteAccountRequest request,
             CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Account completion request received for user: {UserId}", request.UserId);
+            var userId = User.GetUserId();
+
+            _logger.LogInformation("Account completion request received for user: {UserId}", userId);
 
             try
             {
                 var command = new CompleteAccountCommand
                 {
-                    UserId = request.UserId,
+                    UserId = userId,
                     Shortname = request.Shortname?.Trim() ?? string.Empty,
                     Bio = string.IsNullOrWhiteSpace(request.Bio) ? null : request.Bio.Trim()
                 };
@@ -223,24 +252,27 @@ namespace WebAPI.Controllers
 
                 if (result.IsSuccess)
                 {
+                    var response = result.Value;
                     _logger.LogInformation("Account setup completed successfully for user: {UserId}", result.Value);
+
+                    // Set secure HTTP-only cookies
+                    SetSecureTokenCookies(response.AccessToken, response.RefreshToken);
 
                     return Ok(new
                     {
                         success = true,
-                        data = new { userId = result.Value },
-                        message = "Account setup completed successfully. You can now log in."
+                        message = "Account setup completed successfully. You can now use chat."
                     });
                 }
 
                 _logger.LogWarning("Account completion failed for user {UserId}: {Errors}",
-                    request.UserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    userId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
                 return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during account completion for user: {UserId}", request.UserId);
+                _logger.LogError(ex, "Unexpected error during account completion for user: {UserId}", userId);
 
                 return StatusCode(500, new
                 {
@@ -253,6 +285,9 @@ namespace WebAPI.Controllers
                 });
             }
         }
+
+
+
 
         /// <summary>
         /// Authenticates user and returns access and refresh tokens
@@ -285,14 +320,14 @@ namespace WebAPI.Controllers
                     // Set secure HTTP-only cookies
                     SetSecureTokenCookies(response.AccessToken, response.RefreshToken);
 
-                    return Ok(new LoginResponse
+                    return Ok(new 
                     {
-                        UserId = response.UserId,
-                        Firstname = response.Firstname,
-                        Lastname = response.Lastname,
-                        Bio = response.Bio,
-                        AccessToken = response.AccessToken,
-                        RefreshToken = response.RefreshToken
+                        success = true,
+                        data = new
+                        {
+                            Firstname = response.Firstname,
+                            Lastname = response.Lastname,
+                        },
                     });
                 }
 
@@ -317,15 +352,16 @@ namespace WebAPI.Controllers
             }
         }
 
+
+
+
         /// <summary>
         /// Refreshes access token using refresh token
         /// </summary>
-        /// <param name="request">Refresh token</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>New access and refresh tokens</returns>
         [HttpPost("refresh")]
         public async Task<IActionResult> RefreshTokenAsync(
-            [FromBody] RefreshTokenRequest request,
             CancellationToken cancellationToken)
         {
             _logger.LogInformation("Token refresh request received");
@@ -334,7 +370,7 @@ namespace WebAPI.Controllers
             {
                 var command = new RefreshTokenCommand
                 {
-                    RefreshToken = request.RefreshToken?.Trim() ?? string.Empty
+                    RefreshToken = GetRefreshToken(),
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -347,10 +383,8 @@ namespace WebAPI.Controllers
                     // Update secure HTTP-only cookies
                     SetSecureTokenCookies(response.AccessToken, response.RefreshToken);
 
-                    return Ok(new Models.DTOs.Auth.RefreshTokenResponse
-                    {
-                        AccessToken = response.AccessToken,
-                        RefreshToken = response.RefreshToken
+                    return Ok(new {
+                        success = true,
                     });
                 }
 
@@ -375,11 +409,15 @@ namespace WebAPI.Controllers
             }
         }
 
+
+
+
         /// <summary>
         /// Logs out user by clearing authentication cookies
         /// </summary>
         /// <returns>Logout confirmation</returns>
         [HttpPost("logout")]
+        [Authorize(Policy = "Standart")]
         public IActionResult Logout()
         {
             _logger.LogInformation("Logout request received");
@@ -470,8 +508,8 @@ namespace WebAPI.Controllers
                         // Internal Server Errors (500)
                         ErrorCodes.DATABASE_ERROR => StatusCode(500, errorResponse),
 
-                        // Default to Bad Request for validation errors
-                        _ => BadRequest(errorResponse)
+                        // Default to Bad Request for validation errors (FluentValidation)
+                        _ => HandleValidationErrors(errors)
                     };
                 }
             }
@@ -508,6 +546,27 @@ namespace WebAPI.Controllers
             });
         }
 
+        private string GetRefreshToken()
+        {
+            return HttpContext.Request.Cookies.FirstOrDefault(c => c.Key == "refresh_token").Value;
+        }
+
+        /// <summary>
+        /// Sets secure HTTP-only cookie for temporary token
+        /// </summary>
+        private void SetSecureTemporaryTokenCookie(string tempToken)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTime.UtcNow.AddMinutes(60),
+            };
+
+            HttpContext.Response.Cookies.Append("access_token", tempToken, cookieOptions);
+        }
+
         /// <summary>
         /// Sets secure HTTP-only cookies for authentication tokens
         /// </summary>
@@ -518,6 +577,7 @@ namespace WebAPI.Controllers
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
+                Expires = DateTime.UtcNow.AddDays(6),
             };
 
             HttpContext.Response.Cookies.Append("access_token", accessToken, cookieOptions);
