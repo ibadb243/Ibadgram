@@ -1,6 +1,8 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -13,27 +15,16 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Messages.Commands.SendMessage
 {
-	public class SendMessageResponse
+    public class SendMessageCommand : IRequest<Result<SendMessageResponse>>
+    {
+        public Guid UserId { get; set; }
+        public Guid ChatId { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class SendMessageResponse
 	{
-		public Guid ChatId { get; set; }
 		public long Id { get; init; }
-		public DateTime SentAt { get; init; }
-		public bool IsSuccess { get; init; }
-
-		public SendMessageResponse(Guid chatId, long id, DateTime sentAt)
-		{
-			ChatId = chatId;
-			Id = id;
-			SentAt = sentAt;
-			IsSuccess = true;
-		}
-	}
-
-	public class SendMessageCommand : IRequest<Result<SendMessageResponse>> 
-	{
-		public Guid UserId { get; set; }
-		public Guid ChatId { get; set; }
-		public string Message { get; set; } = string.Empty;
 	}
 
 	public class SendMessageCommandValidator : AbstractValidator<SendMessageCommand>
@@ -41,20 +32,28 @@ namespace Application.CQRS.Messages.Commands.SendMessage
 		public SendMessageCommandValidator()
 		{
 			RuleFor(x => x.UserId)
+				.Cascade(CascadeMode.Stop)
 				.NotEmpty()
+					.WithErrorCode(ErrorCodes.REQUIRED_FIELD)
 					.WithMessage("UserId is required");
 
 			RuleFor(x => x.ChatId)
-				.NotEmpty()
-					.WithMessage("ChatId is required");
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty()
+					.WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                    .WithMessage("ChatId is required");
 
 			RuleFor(x => x.Message)
-				.NotEmpty()
-					.WithMessage("Message content is required")
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                    .WithMessage("Message content is required")
 				.MinimumLength(MessageConstants.MinLength)
-					.WithMessage($"Message must be at least {MessageConstants.MinLength} characters")
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
+                    .WithMessage($"Message must be at least {MessageConstants.MinLength} characters")
 				.MaximumLength(MessageConstants.MaxLength)
-					.WithMessage($"Message cannot exceed {MessageConstants.MaxLength} characters");
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
+                    .WithMessage($"Message cannot exceed {MessageConstants.MaxLength} characters");
 		}
 	}
 
@@ -75,28 +74,28 @@ namespace Application.CQRS.Messages.Commands.SendMessage
 			SendMessageCommand request,
 			CancellationToken cancellationToken)
 		{
-			_logger.LogInformation(
-				"Processing send message command for UserId: {UserId}, ChatId: {ChatId}",
-				request.UserId, request.ChatId);
+            _logger.LogInformation(
+                "Starting send message process from user: {UserId} to chat: {ChatId}",
+                request.UserId, request.ChatId);
 
 			await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
 			try
 			{
-				var userValidationResult = await ValidateUserAsync(request.UserId, cancellationToken);
+				var userValidationResult = await GetAndValidateUserAsync(request.UserId, cancellationToken);
 				if (userValidationResult.IsFailed)
 				{
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return userValidationResult.ToResult<SendMessageResponse>();
+                    return userValidationResult.ToResult();
                 }
 
 				var user = userValidationResult.Value;
 
-				var chatValidationResult = await ValidateChatAsync(request.ChatId, cancellationToken);
+				var chatValidationResult = await GetAndValidateChatAsync(request.ChatId, cancellationToken);
 				if (chatValidationResult.IsFailed)
 				{
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return chatValidationResult.ToResult<SendMessageResponse>();
+                    return chatValidationResult.ToResult();
                 }
 
 				var chat = chatValidationResult.Value;
@@ -105,102 +104,132 @@ namespace Application.CQRS.Messages.Commands.SendMessage
 				if (membershipValidationResult.IsFailed)
 				{
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return membershipValidationResult.ToResult<SendMessageResponse>();
+                    return membershipValidationResult.ToResult();
                 }
 
-				var now = DateTime.UtcNow;
 				var message = new Message
 				{
 					ChatId = request.ChatId,
 					UserId = request.UserId,
 					Text = request.Message,
-					CreatedAtUtc = now,
+					CreatedAtUtc = DateTime.UtcNow,
 					IsDeleted = false
 				};
 
-				_logger.LogDebug("Adding message to database");
-				await _unitOfWork.MessageRepository.AddAsync(message, cancellationToken);
+                await _unitOfWork.MessageRepository.AddAsync(message, cancellationToken);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-				_logger.LogDebug("Saving changes to database");
-				await _unitOfWork.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Message created successfully: {ChatId} {MessageId} by user: {UserId}",
+					message.ChatId, message.Id, message.UserId);
 
-				_logger.LogDebug("Message created successfully with ID {MessageId}", message.Id);
-
-				_logger.LogDebug("Committing transaction");
-				await _unitOfWork.CommitTransactionAsync(cancellationToken);
-
-				_logger.LogInformation(
-					"Message sent successfully. MessageId: {MessageId}, UserId: {UserId}, ChatId: {ChatId}",
-					message.Id, request.UserId, request.ChatId);
-
-				return Result.Ok(new SendMessageResponse(message.ChatId, message.Id, now));
+				return Result.Ok(new SendMessageResponse
+				{
+					Id = message.Id,
+				});
 			}
 			catch (Exception ex)
 			{
 				_logger.LogError(ex,
-					"Error occurred while sending message for UserId: {UserId}, ChatId: {ChatId}",
+					"Send message failed for user: {UserId} in chat: {ChatId}",
 					request.UserId, request.ChatId);
 
                 try
                 {
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    _logger.LogDebug("Transaction rolled back successfully");
                 }
                 catch (Exception rollbackEx)
                 {
-                    _logger.LogError(rollbackEx, "Failed to rollback transaction during send message");
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to send message due to system error"
+                ));
             }
 		}
 
-		private async Task<Result<User>> ValidateUserAsync(Guid userId, CancellationToken cancellationToken)
+		private async Task<Result<User>> GetAndValidateUserAsync(
+            Guid userId,
+            CancellationToken cancellationToken)
 		{
-			_logger.LogDebug("Validating user {UserId}", userId);
+            _logger.LogDebug("Retrieving user by ID: {UserId}", userId);
 
-			var user = await _unitOfWork.UserRepository.GetByIdAsync(userId, cancellationToken);
+            var user = await _unitOfWork.UserRepository.GetByIdAsync(userId, cancellationToken);
 
 			if (user == null)
 			{
-				_logger.LogWarning("User {UserId} not found", userId);
-				return Result.Fail("User not found");
-			}
+                _logger.LogWarning("Message sending failed - user not found: {UserId}", userId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_FOUND,
+                    "User not found",
+                    new { UserId = userId }
+                ));
+            }
 
 			if (!user.IsVerified)
 			{
-				_logger.LogWarning("User {UserId} isn't verified", userId);
-				return Result.Fail("User isn't verified");
-			}
+                _logger.LogWarning("Message sending failed - account hasn't completed for user: {UserId}", userId);
 
-			if (user.IsDeleted)
-			{
-				_logger.LogWarning("User {UserId} is deleted", userId);
-				return Result.Fail("User is deleted");
-			}
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_VERIFIED,
+                    "User not verified",
+                    new
+                    {
+                        UserId = userId,
+                    }
+                ));
+            }
 
-			return Result.Ok(user);
+            if (user.IsDeleted)
+            {
+                _logger.LogWarning("Message sending failed - account is deleted for user: {UserId}", userId);
+
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_DELETED,
+                    "User is deleted",
+                    new
+                    {
+                        UserId = userId,
+                    }
+                ));
+            }
+
+            _logger.LogDebug("User validation successful: {UserId}", userId);
+            return Result.Ok(user);
 		}
 
-		private async Task<Result<Chat>> ValidateChatAsync(Guid chatId, CancellationToken cancellationToken)
+		private async Task<Result<Chat>> GetAndValidateChatAsync(
+            Guid chatId, 
+            CancellationToken cancellationToken)
 		{
-			_logger.LogDebug("Validating chat {ChatId}", chatId);
+			_logger.LogDebug("Retrieving chat by ID: {ChatId}", chatId);
 
 			var chat = await _unitOfWork.ChatRepository.GetByIdAsync(chatId, cancellationToken);
 
 			if (chat == null)
 			{
-				_logger.LogWarning("Chat {ChatId} not found", chatId);
-				return Result.Fail("Chat not found");
-			}
+                _logger.LogWarning("Message sending failed - chat not found: {ChatId}", chatId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_NOT_FOUND,
+                    "Chat not found",
+                    new { ChatId = chatId }
+                ));
+            }
 
 			if (chat.IsDeleted)
 			{
-				_logger.LogWarning("Chat {ChatId} is deleted", chatId);
-				return Result.Fail("Chat is deleted");
-			}
+                _logger.LogWarning("Message sending failed - chat is deleted: {ChatId}", chatId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_DELETED,
+                    "Chat is deleted",
+                    new { ChatId = chatId }
+                ));
+            }
 
-			return Result.Ok(chat);
+            _logger.LogDebug("Chat validation successful: {ChatId}", chatId);
+            return Result.Ok(chat);
 		}
 
 		private async Task<Result<ChatMember>> ValidateMembershipAsync(
@@ -208,24 +237,30 @@ namespace Application.CQRS.Messages.Commands.SendMessage
 			User user,
 			CancellationToken cancellationToken)
 		{
-			_logger.LogDebug("Validating membership for user {UserId} in chat {ChatId}", user.Id, chat.Id);
+            _logger.LogDebug("Validating membership for user {UserId} in chat {ChatId}", user.Id, chat.Id);
 
-			var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(
+            var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(
 				chat.Id, user.Id, cancellationToken);
 
 			if (member == null)
 			{
-				_logger.LogWarning("User {UserId} is not a member of chat {ChatId}", user.Id, chat.Id);
-				return Result.Fail("You are not a member of this chat");
-			}
+                _logger.LogWarning("Message sending failed - user is not a member of the chat: UserId {UserId}, ChatId {ChatId}",
+                    user.Id, chat.Id);
 
-			//if (member.IsDeleted)
-			//{
-			//    _logger.LogWarning("User {UserId} membership in chat {ChatId} is deleted", user.Id, chat.Id);
-			//    return Result.Fail("Your membership has been revoked");
-			//}
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_ACCESS_DENIED,
+                    "You are not a member of this chat",
+                    new
+                    {
+                        UserId = user.Id,
+                        ChatId = chat.Id,
+                        SuggestedAction = "Join the chat or request access"
+                    }
+                ));
+            }
 
-			return Result.Ok(member);
+            _logger.LogDebug("Membership validation successful for user {UserId} in chat {ChatId}", user.Id, chat.Id);
+            return Result.Ok(member);
 		}
 	}
 }
