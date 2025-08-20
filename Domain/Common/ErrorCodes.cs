@@ -33,6 +33,11 @@ namespace Domain.Common
         public const string REFRESH_TOKEN_NOT_FOUND = "REFRESH_TOKEN_NOT_FOUND";
         public const string REFRESH_TOKEN_REVOKED = "REFRESH_TOKEN_REVOKED";
         public const string REFRESH_TOKEN_EXPIRED = "REFRESH_TOKEN_EXPIRED";
+        public const string CHAT_ALREADY_EXISTS = "CHAT_ALREADY_EXISTS";
+        public const string CHAT_NOT_FOUND = "CHAT_NOT_FOUND";
+        public const string CHAT_DELETED = "CHAT_DELETED";
+        public const string CHAT_ACCESS_DENIED = "CHAT_ACCESS_DENIED";
+        public const string REQUEST_EMTPY = "REQUEST_EMTPY";
 
         // System errors
         public const string DATABASE_ERROR = "DATABASE_ERROR";
