@@ -1,7 +1,9 @@
 ﻿using Application.Interfaces.Repositories;
+using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.Errors;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -15,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace Application.CQRS.Chats.Commands.CreateGroup
 {
-    public class CreateGroupCommand : IRequest<Result<Guid>>
+    public class CreateGroupCommand : IRequest<Result<CreateGroupCommandResponse>>
     {
         public Guid UserId { get; set; }
         public string Name { get; set; }
@@ -24,40 +26,62 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
         public string? Shortname { get; set; }
     }
 
+    public class CreateGroupCommandResponse
+    {
+        public Guid GroupId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public bool IsPrivate { get; set; }
+        public string? Shortname { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
     public class CreateGroupCommandValidator : AbstractValidator<CreateGroupCommand>
     {
         public CreateGroupCommandValidator()
         {
             RuleFor(x => x.UserId)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("UserId is required");
 
             RuleFor(x => x.Name)
+                .Cascade(CascadeMode.Stop)
                 .NotEmpty()
-                    .WithMessage("Name is required")
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                    .WithMessage("Group name is required")
                 .MinimumLength(ChatConstants.NameMinLength)
-                    .WithMessage($"Name's length should have minimum {ChatConstants.NameMinLength} characters")
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
+                    .WithMessage($"Group name must be at least {ChatConstants.NameMinLength} characters long")
                 .MaximumLength(ChatConstants.NameMaxLength)
-                    .WithMessage($"Name's length cann't have characters greater than {ChatConstants.NameMaxLength}");
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
+                    .WithMessage($"Group name cannot exceed {ChatConstants.NameMaxLength} characters");
 
             RuleFor(x => x.Description)
+                .Cascade(CascadeMode.Stop)
                 .MaximumLength(ChatConstants.DescriptionLength)
-                    .WithMessage($"Description's length cann't have characters greater than {UserConstants.BioLength}");
+                    .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
+                    .WithMessage($"Description cannot exceed {ChatConstants.DescriptionLength} characters");
 
             When(x => !x.IsPrivate, () =>
             {
                 RuleFor(x => x.Shortname)
+                    .Cascade(CascadeMode.Stop)
                     .NotEmpty()
-                        .WithMessage("Shortname is required")
+                        .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
+                        .WithMessage("Shortname is required for public groups")
                     .MinimumLength(ShortnameConstants.MinLength)
-                        .WithMessage($"Shortname's length should have minimum {ShortnameConstants.MinLength} characters")
+                        .WithErrorCode(ErrorCodes.FIELD_TOO_SHORT)
+                        .WithMessage($"Shortname must be at least {ShortnameConstants.MinLength} characters long")
                     .MaximumLength(ShortnameConstants.MaxLength)
-                        .WithMessage($"Shortname's length cann't have characters greater than {ShortnameConstants.MaxLength}");
+                        .WithErrorCode(ErrorCodes.FIELD_TOO_LONG)
+                        .WithMessage($"Shortname cannot exceed {ShortnameConstants.MaxLength} characters");
             });
         }
     }
 
-    public class CreateGroupCommandHandler : IRequestHandler<CreateGroupCommand, Result<Guid>>
+    public class CreateGroupCommandHandler : IRequestHandler<CreateGroupCommand, Result<CreateGroupCommandResponse>>
     {
         private readonly IUnitOfWork _unitOfWork;
         private readonly ILogger<CreateGroupCommandHandler> _logger;
@@ -70,104 +94,57 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
             _logger = logger;
         }
 
-        public async Task<Result<Guid>> Handle(CreateGroupCommand request, CancellationToken cancellationToken)
+        public async Task<Result<CreateGroupCommandResponse>> Handle(CreateGroupCommand request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting create group proccess");
+            _logger.LogInformation("Starting group creation process for user: {UserId}, group name: {GroupName}",
+                request.UserId, request.Name);
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             try
             {
-                _logger.LogDebug("Retrieving user by id {UserId} from database", request.UserId);
-                var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
-
-                if (user == null)
+                var userResult = await GetAndValidateUserAsync(request.UserId, cancellationToken);
+                if (userResult.IsFailed)
                 {
-                    _logger.LogWarning("Create group failed - user not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User not found");
+                    return userResult.ToResult();
                 }
 
-                if (!user.IsVerified)
-                {
-                    _logger.LogWarning("Create group failed - user with id {UserId} is deleted", request.UserId);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User isn't verified");
-                }
-
-                if (user.IsDeleted)
-                {
-                    _logger.LogWarning("Create group failed - user with id {UserId} is deleted", request.UserId);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User is deleted");
-                }
-
-                _logger.LogInformation("User validated successfully");
-
-                Chat group = new Chat
-                {
-                    Id = Guid.NewGuid(),
-                    Type = ChatType.Group,
-                    Name = request.Name,
-                    Description = request.Description,
-                    IsPrivate = request.IsPrivate,
-                };
-
-                _logger.LogDebug("Adding group with id {ChatId} to database", group.Id);
-                await _unitOfWork.ChatRepository.AddAsync(group, cancellationToken);
+                var user = userResult.Value;
 
                 if (!request.IsPrivate)
                 {
-                    _logger.LogInformation("Binding mention");
-
-                    _logger.LogDebug("Retrieving mention by shortname {Shortname} from database", request.Shortname);
-                    var mention = await _unitOfWork.MentionRepository.GetByShortnameAsync(request.Shortname, cancellationToken);
-
-                    if (mention != null)
+                    var shortnameValidationResult = await ValidateShortnameAvailability(request.Shortname!, cancellationToken);
+                    if (shortnameValidationResult.IsFailed)
                     {
-                        _logger.LogWarning("Binding mention failed - mention has already been taken");
                         await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                        return Result.Fail("Shortname has already been taken");
+                        return shortnameValidationResult;
                     }
-
-                    mention = new ChatMention
-                    {
-                        Id= Guid.NewGuid(),
-                        Shortname = request.Shortname,
-                        ChatId = group.Id,
-                        Chat = group,
-                    };
-
-                    _logger.LogDebug("Adding mention with id {MentionId} to database", mention.Id);
-                    await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
                 }
 
-                var member = new ChatMember
-                {
-                    ChatId = group.Id,
-                    UserId = user.Id,
-                    Nickname = "Creator",
-                    Role = ChatRole.Creator,
-                    Chat = group,
-                    User = user,
-                };
+                var group = await CreateGroupEntity(request, cancellationToken);
+                var mention = await CreateMentionIfNeeded(request, group.Id, cancellationToken);
+                await CreateCreatorMembership(group.Id, user.Id, cancellationToken);
 
-                _logger.LogDebug("Adding creator member to database");
-                await _unitOfWork.ChatMemberRepository.AddAsync(member, cancellationToken);
-
-                _logger.LogDebug("Saving changes to databse");
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("Creating group completed successfully");
+                _logger.LogInformation("Group created successfully: {GroupId} by user: {UserId}",
+                    group.Id, user.Id);
 
-                return group.Id;
+                return Result.Ok(new CreateGroupCommandResponse
+                {
+                    GroupId = group.Id,
+                    Name = group.Name ?? string.Empty,
+                    Description = group.Description ?? string.Empty,
+                    IsPrivate = group.IsPrivate ?? false,
+                    Shortname = mention?.Shortname,
+                    CreatedAt = group.CreatedAtUtc
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Creating group failed");
+                _logger.LogError(ex, "Group creation failed for user: {UserId}", request.UserId);
 
                 try
                 {
@@ -176,11 +153,158 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
                 }
                 catch (Exception rollbackEx)
                 {
-                    _logger.LogError(rollbackEx, "Failed to rollback transaction during create group");
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction during group creation");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to create group due to system error"
+                ));
             }
+        }
+
+        private async Task<Result<User>> GetAndValidateUserAsync(
+            Guid userId, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving user by ID: {UserId}", userId);
+
+            var user = await _unitOfWork.UserRepository.GetByIdAsync(userId, cancellationToken);
+
+            if (user == null)
+            {
+                _logger.LogWarning("Group creation failed - user not found: {UserId}", userId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_FOUND,
+                    "User not found",
+                    new { UserId = userId }
+                ));
+            }
+
+            if (!user.IsVerified)
+            {
+                _logger.LogWarning("Group creation failed - user not verified: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_VERIFIED,
+                    "User account is not verified",
+                    new
+                    {
+                        UserId = user.Id,
+                        SuggestedAction = "Please verify your account first"
+                    }
+                ));
+            }
+
+            if (user.IsDeleted)
+            {
+                _logger.LogWarning("Group creation failed - user is deleted: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_DELETED,
+                    "User account has been deleted",
+                    new { UserId = user.Id }
+                ));
+            }
+
+            _logger.LogDebug("User validation successful: {UserId}", user.Id);
+            return Result.Ok(user);
+        }
+
+        private async Task<Result> ValidateShortnameAvailability(
+            string shortname, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Checking shortname availability: {Shortname}", shortname);
+
+            var existingMention = await _unitOfWork.MentionRepository.GetByShortnameAsync(shortname, cancellationToken);
+
+            if (existingMention != null)
+            {
+                _logger.LogWarning("Group creation failed - shortname already taken: {Shortname}", shortname);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USERNAME_ALREADY_TAKEN,
+                    "Shortname is already taken",
+                    new
+                    {
+                        Shortname = shortname,
+                        SuggestedAction = "Choose a different shortname"
+                    }
+                ));
+            }
+
+            _logger.LogDebug("Shortname is available: {Shortname}", shortname);
+            return Result.Ok();
+        }
+
+        private async Task<Chat> CreateGroupEntity(
+            CreateGroupCommand request, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Creating group entity with name: {GroupName}", request.Name);
+
+            var group = new Chat
+            {
+                Id = Guid.NewGuid(),
+                Type = ChatType.Group,
+                Name = request.Name,
+                Description = request.Description,
+                IsPrivate = request.IsPrivate,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            await _unitOfWork.ChatRepository.AddAsync(group, cancellationToken);
+
+            _logger.LogDebug("Group entity created with ID: {GroupId}", group.Id);
+            return group;
+        }
+
+        private async Task<ChatMention?> CreateMentionIfNeeded(
+            CreateGroupCommand request, 
+            Guid groupId, 
+            CancellationToken cancellationToken)
+        {
+            if (request.IsPrivate)
+            {
+                _logger.LogDebug("Skipping mention creation for private group: {GroupId}", groupId);
+                return null;
+            }
+
+            _logger.LogDebug("Creating mention for public group: {GroupId} with shortname: {Shortname}",
+                groupId, request.Shortname);
+
+            var mention = new ChatMention
+            {
+                Id = Guid.NewGuid(),
+                Shortname = request.Shortname!,
+                ChatId = groupId
+            };
+
+            await _unitOfWork.MentionRepository.AddAsync(mention, cancellationToken);
+
+            _logger.LogDebug("Mention created with ID: {MentionId}", mention.Id);
+            return mention;
+        }
+
+        private async Task CreateCreatorMembership(
+            Guid groupId,
+            Guid userId, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Creating creator membership for group: {GroupId}, user: {UserId}",
+                groupId, userId);
+
+            var member = new ChatMember
+            {
+                ChatId = groupId,
+                UserId = userId,
+                Nickname = "Creator",
+                Role = ChatRole.Creator,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            await _unitOfWork.ChatMemberRepository.AddAsync(member, cancellationToken);
+
+            _logger.LogDebug("Creator membership created for user: {UserId} in group: {GroupId}",
+                userId, groupId);
         }
     }
 }
