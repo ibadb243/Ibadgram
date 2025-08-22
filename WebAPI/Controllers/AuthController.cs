@@ -472,98 +472,6 @@ namespace WebAPI.Controllers
         #region Private Helper Methods
 
         /// <summary>
-        /// Handles business logic errors with appropriate HTTP status codes
-        /// </summary>
-        private IActionResult HandleBusinessErrors(IReadOnlyList<IError> errors)
-        {
-            foreach (var error in errors)
-            {
-                if (error.Metadata.TryGetValue("ErrorCode", out var code))
-                {
-                    var errorCode = code.ToString();
-                    var additionalData = error.Metadata.TryGetValue("AdditionalData", out var data) ? data : null;
-
-                    var errorResponse = new
-                    {
-                        success = false,
-                        error = new
-                        {
-                            code = errorCode,
-                            message = error.Message,
-                            additional_data = additionalData
-                        }
-                    };
-
-                    return errorCode switch
-                    {
-                        // Not Found Errors (404)
-                        ErrorCodes.USER_NOT_FOUND => NotFound(errorResponse),
-                        ErrorCodes.CONFIRMATION_TOKEN_NOT_FOUND => NotFound(errorResponse),
-                        ErrorCodes.REFRESH_TOKEN_NOT_FOUND => NotFound(errorResponse),
-
-                        // Bad Request Errors (400)
-                        ErrorCodes.EMAIL_NOT_CONFIRMED => BadRequest(errorResponse),
-                        ErrorCodes.CONFIRMATION_CODE_EXPIRED => BadRequest(errorResponse),
-                        ErrorCodes.INVALID_CONFIRMATION_CODE => BadRequest(errorResponse),
-                        ErrorCodes.REFRESH_TOKEN_EXPIRED => BadRequest(errorResponse),
-                        ErrorCodes.REFRESH_TOKEN_REVOKED => BadRequest(errorResponse),
-
-                        // Unauthorized Errors (401)
-                        ErrorCodes.INVALID_CREDENTIALS => Unauthorized(errorResponse),
-                        ErrorCodes.USER_NOT_VERIFIED => Unauthorized(errorResponse),
-
-                        // Conflict Errors (409)
-                        ErrorCodes.USER_ALREADY_VERIFIED => Conflict(errorResponse),
-                        ErrorCodes.EMAIL_ALREADY_CONFIRMED => Conflict(errorResponse),
-                        ErrorCodes.EMAIL_AWAITING_CONFIRMATION => Conflict(errorResponse),
-                        ErrorCodes.ACCOUNT_ALREADY_COMPLETED => Conflict(errorResponse),
-                        ErrorCodes.USERNAME_ALREADY_TAKEN => Conflict(errorResponse),
-
-                        // Gone Errors (410)
-                        ErrorCodes.USER_DELETED => StatusCode(410, errorResponse),
-
-                        // Internal Server Errors (500)
-                        ErrorCodes.DATABASE_ERROR => StatusCode(500, errorResponse),
-
-                        // Default to Bad Request for validation errors (FluentValidation)
-                        _ => HandleValidationErrors(errors)
-                    };
-                }
-            }
-
-            // Handle validation errors (FluentValidation)
-            return HandleValidationErrors(errors);
-        }
-
-        /// <summary>
-        /// Handles FluentValidation errors
-        /// </summary>
-        private IActionResult HandleValidationErrors(IReadOnlyList<IError> errors)
-        {
-            var validationErrors = new Dictionary<string, object>();
-
-            foreach (var error in errors)
-            {
-                var errorCode = error.Metadata.TryGetValue("ErrorCode", out var code) ? code.ToString() : "VALIDATION_ERROR";
-                var propertyName = error.Metadata.TryGetValue("PropertyName", out var prop) ? prop.ToString()?.ToLowerInvariant() : "unknown";
-                var attemptedValue = error.Metadata.TryGetValue("AttemptedValue", out var value) ? value : null;
-
-                validationErrors[propertyName ?? "unknown"] = new
-                {
-                    code = errorCode,
-                    message = error.Message,
-                    attempted_value = attemptedValue
-                };
-            }
-
-            return BadRequest(new
-            {
-                success = false,
-                errors = validationErrors
-            });
-        }
-
-        /// <summary>
         /// Get access token from cookies
         /// </summary>
         private string GetAccessToken()
@@ -592,7 +500,7 @@ namespace WebAPI.Controllers
                 Expires = DateTime.UtcNow.AddMinutes(60),
             };
 
-            HttpContext.Response.Cookies.Append("access_token", tempToken, cookieOptions);
+            SetCookie("access_token", tempToken, cookieOptions);
         }
 
         /// <summary>
@@ -608,8 +516,8 @@ namespace WebAPI.Controllers
                 Expires = DateTime.UtcNow.AddDays(6),
             };
 
-            HttpContext.Response.Cookies.Append("access_token", accessToken, cookieOptions);
-            HttpContext.Response.Cookies.Append("refresh_token", refreshToken, cookieOptions);
+            SetCookie("access_token", accessToken, cookieOptions);
+            SetCookie("refresh_token", refreshToken, cookieOptions);
         }
 
         /// <summary>
@@ -625,8 +533,8 @@ namespace WebAPI.Controllers
                 Expires = DateTimeOffset.UtcNow.AddDays(-1)
             };
 
-            HttpContext.Response.Cookies.Append("access_token", string.Empty, cookieOptions);
-            HttpContext.Response.Cookies.Append("refresh_token", string.Empty, cookieOptions);
+            SetCookie("access_token", string.Empty, cookieOptions);
+            SetCookie("refresh_token", string.Empty, cookieOptions);
         }
 
         #endregion
