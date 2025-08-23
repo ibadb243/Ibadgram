@@ -11,7 +11,7 @@ namespace Persistence
     {
         public static void Init(ApplicationDbContext context)
         {
-            context.Database.EnsureDeleted();
+            //context.Database.EnsureDeleted();
             context.Database.EnsureCreated();
         }
     }

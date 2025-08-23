@@ -21,6 +21,7 @@ namespace Persistence
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserMentionRepository, UserMentionRepository>();
             services.AddScoped<IChatRepository, ChatRepository>();
+            services.AddScoped<IChatMentionRepository, ChatMentionRepository>();
             services.AddScoped<IChatMemberRepository, ChatMemberRepository>();
             services.AddScoped<IMentionRepository, MentionRepository>();
             services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
