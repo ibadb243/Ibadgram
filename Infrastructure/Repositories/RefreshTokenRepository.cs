@@ -2,14 +2,14 @@
 using Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Persistence.Data;
+using Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Persistence.Repositories
+namespace Infrastructure.Repositories
 {
     public class RefreshTokenRepository : IRefreshTokenRepository
     {

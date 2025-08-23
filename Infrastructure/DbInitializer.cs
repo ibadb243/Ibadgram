@@ -1,11 +1,11 @@
-﻿using Persistence.Data;
+﻿using Infrastructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Persistence
+namespace Infrastructure
 {
     public static class DbInitializer
     {

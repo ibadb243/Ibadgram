@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Persistence.Data
+namespace Infrastructure.Data
 {
     public class ApplicationDbContext : DbContext
     {

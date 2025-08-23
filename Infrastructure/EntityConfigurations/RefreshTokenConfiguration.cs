@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Persistence.EntityConfigurations
+namespace Infrastructure.EntityConfigurations
 {
     public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
     {
