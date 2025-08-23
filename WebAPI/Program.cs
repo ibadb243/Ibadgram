@@ -1,5 +1,5 @@
-using Persistence;
-using Persistence.Data;
+using Infrastructure;
+using Infrastructure.Data;
 
 namespace WebAPI
 {

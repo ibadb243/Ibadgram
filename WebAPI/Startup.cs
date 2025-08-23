@@ -1,9 +1,8 @@
 ﻿using Application;
-using Microsoft.AspNetCore.Builder;
-using Persistence;
+using Infrastructure;
 using Serilog;
-using Services;
 using WebAPI.Extensions;
+using WebAPI.Hubs;
 using WebAPI.Middlerwares;
 
 namespace WebAPI
@@ -33,6 +32,7 @@ namespace WebAPI
 
             services.AddControllers();
             services.AddEndpointsApiExplorer();
+            services.AddSignalR();
 
             services.AddCors(options =>
             {
@@ -65,6 +65,7 @@ namespace WebAPI
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapHub<NotificationHub>("/notify");
             });
         }
     }
