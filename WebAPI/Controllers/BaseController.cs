@@ -18,48 +18,6 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Sets cookie
-        /// </summary>
-        /// <param name="key">Key</param>
-        /// <param name="value">Value</param>
-        /// <param name="options">Cookie options</param>
-        protected void SetCookie(string key, string value, CookieOptions options = null)
-        {
-            options ??= new CookieOptions()
-            {
-                Secure = true,
-                HttpOnly = false,
-                SameSite = SameSiteMode.Strict
-            };
-
-            HttpContext.Response.Cookies.Append(key, value, options);
-        }
-
-
-        /// <summary>
-        /// Set cookies with one cookie configuration for all them
-        /// </summary>
-        /// <param name="options">Cookie options</param>
-        /// <param name="pairs">Key-Value pairs</param>
-        protected void SetCookies(CookieOptions options = null, params(string key, string value)[] pairs)
-        {
-            foreach (var pair in pairs)
-                SetCookie(pair.key, pair.value, options);
-        }
-
-
-        /// <summary>
-        /// Set cookies
-        /// </summary>
-        /// <param name="pairs">Key-Value-Cookie options pairs</param>
-        protected void SetCookies(params (string key, string value, CookieOptions options)[] pairs)
-        {
-            foreach (var pair in pairs)
-                SetCookie(pair.key, pair.value, pair.options);
-        }
-
-
-        /// <summary>
         /// Handles business logic errors with appropriate HTTP status codes
         /// </summary>
         protected IActionResult HandleBusinessErrors(IReadOnlyList<IError> errors)
@@ -162,5 +120,50 @@ namespace WebAPI.Controllers
                 errors = validationErrors
             });
         }
+
+
+        /// <summary>
+        /// Sets cookie
+        /// </summary>
+        /// <param name="key">Key</param>
+        /// <param name="value">Value</param>
+        /// <param name="options">Cookie options</param>
+        protected void SetCookie(string key, string value, CookieOptions options = null)
+        {
+            options ??= new CookieOptions()
+            {
+                Secure = true,
+                HttpOnly = false,
+                SameSite = SameSiteMode.Strict
+            };
+
+            HttpContext.Response.Cookies.Append(key, value, options);
+        }
+
+
+        /// <summary>
+        /// Set cookies with one cookie configuration for all them
+        /// </summary>
+        /// <param name="options">Cookie options</param>
+        /// <param name="pairs">Key-Value pairs</param>
+        protected void SetCookies(CookieOptions options = null, params(string key, string value)[] pairs)
+        {
+            foreach (var pair in pairs)
+                SetCookie(pair.key, pair.value, options);
+        }
+
+
+        /// <summary>
+        /// Set cookies
+        /// </summary>
+        /// <param name="pairs">Key-Value-Cookie options pairs</param>
+        protected void SetCookies(params (string key, string value, CookieOptions options)[] pairs)
+        {
+            foreach (var pair in pairs)
+                SetCookie(pair.key, pair.value, pair.options);
+        }
+
+
+        
     }
 }
