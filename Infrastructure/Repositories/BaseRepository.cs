@@ -141,9 +141,7 @@ namespace Infrastructure.Repositories
             if (!isUpdate && entity is IHasCreationTime creatable)
             {
                 creatable.CreatedAtUtc = now;
-            }
-
-            if (entity is IHasModificationTime modifiable)
+            } else if (entity is IHasModificationTime modifiable)
             {
                 modifiable.UpdatedAtUtc = now;
             }
