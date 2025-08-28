@@ -1,6 +1,8 @@
-﻿namespace Domain.Entities
+﻿using Domain.Common;
+
+namespace Domain.Entities
 {
-    public class RefreshToken
+    public class RefreshToken : IHasCreationTime
     {
         public Guid Id { get; set; }
         public Guid UserId { get; set; }

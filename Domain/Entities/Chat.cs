@@ -1,8 +1,9 @@
-﻿using Domain.Enums;
+﻿using Domain.Common;
+using Domain.Enums;
 
 namespace Domain.Entities
 {
-    public class Chat
+    public class Chat : IHasCreationTime
     {
         public Guid Id { get; set; }
         public ChatType Type { get; set; }

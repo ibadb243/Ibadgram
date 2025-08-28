@@ -1,6 +1,8 @@
-﻿namespace Domain.Entities
+﻿using Domain.Common;
+
+namespace Domain.Entities
 {
-    public class Message
+    public class Message : IHasCreationTime, IHasModificationTime
     {
         public Guid ChatId { get; set; }
         public long Id { get; set; }
