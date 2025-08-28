@@ -10,38 +10,74 @@ using System.Threading.Tasks;
 
 namespace Infrastructure.Repositories
 {
-    public class MessageRepository : IMessageRepository
+    public class MessageRepository : BaseRepository<Message>, IMessageRepository
     {
-        private readonly ApplicationDbContext _context;
+        public MessageRepository(ApplicationDbContext context) : base(context) { }
 
-        public MessageRepository(ApplicationDbContext context)
+        public async Task<Message?> GetByCompositeIdAsync(Guid chatId, long messageId, CancellationToken cancellationToken = default)
         {
-            _context = context;
+            return await GetFilteredQuery()
+                .Include(m => m.User)
+                .Include(m => m.Chat)
+                .FirstOrDefaultAsync(m => m.ChatId == chatId && m.Id == messageId, cancellationToken);
         }
 
-        public async Task<Message> AddAsync(Message message, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<Message>> GetChatMessagesAsync(Guid chatId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
         {
-            await _context.Messages.AddAsync(message, cancellationToken);
-            return message;
+            if (limit > 100) limit = 100;
+            if (offset < 0) offset = 0;
+
+            return await GetFilteredQuery()
+                .Include(m => m.User)
+                .Where(m => m.ChatId == chatId)
+                .OrderByDescending(m => m.CreatedAtUtc)
+                .Skip(offset)
+                .Take(limit)
+                .ToListAsync(cancellationToken);
         }
 
-        public Task<Message> UpdateAsync(Message message, CancellationToken cancellationToken = default)
+        public async Task<IEnumerable<Message>> GetUserMessagesAsync(Guid userId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.Messages.Update(message);
-            return Task.FromResult(message);
+            if (limit > 100) limit = 100;
+            if (offset < 0) offset = 0;
+
+            return await GetFilteredQuery()
+                .Include(m => m.Chat)
+                .Where(m => m.UserId == userId)
+                .OrderByDescending(m => m.CreatedAtUtc)
+                .Skip(offset)
+                .Take(limit)
+                .ToListAsync(cancellationToken);
         }
 
-        public Task DeleteAsync(Message message, CancellationToken cancellationToken = default)
+        public async Task<long> GetNextMessageIdAsync(Guid chatId, CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.Messages.Remove(message);
-            return Task.CompletedTask;
+            var lastMessage = await GetFilteredQuery()
+                .Where(m => m.ChatId == chatId)
+                .OrderByDescending(m => m.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return lastMessage?.Id + 1 ?? 1;
         }
 
-        public async Task<Message> GetByIdAsync(Guid chatId, long messageId, CancellationToken cancellationToken = default)
+        public async Task<int> GetChatMessageCountAsync(Guid chatId, CancellationToken cancellationToken = default)
         {
-            return await _context.Messages.FirstOrDefaultAsync(m => m.ChatId == chatId && m.Id == messageId, cancellationToken);
+            return await GetFilteredQuery()
+                .CountAsync(m => m.ChatId == chatId, cancellationToken);
+        }
+
+        public async Task<Message?> GetLastMessageAsync(Guid chatId, CancellationToken cancellationToken = default)
+        {
+            return await GetFilteredQuery()
+                .Include(m => m.User)
+                .Where(m => m.ChatId == chatId)
+                .OrderByDescending(m => m.CreatedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        public IQueryable<Message> GetQueryable()
+        {
+            return GetFilteredQuery();
         }
     }
 }
