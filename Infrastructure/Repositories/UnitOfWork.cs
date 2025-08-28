@@ -1,42 +1,63 @@
-﻿using Application.Interfaces.Repositories;
+﻿using Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Infrastructure.Data;
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Repositories
 {
-    public class UnitOfWork : IUnitOfWork, IDisposable
+    public class UnitOfWork : IUnitOfWork
     {
         private readonly ApplicationDbContext _context;
-        private IDbContextTransaction _currentTransaction;
+        private readonly ILogger<UnitOfWork> _logger;
+        private IDbContextTransaction? _currentTransaction;
         private bool _disposed = false;
 
-        private IUserRepository _userRepository; 
-        private IRefreshTokenRepository _refreshTokenRepository;
-        private IMentionRepository _mentionRepository;
-        private IUserMentionRepository _userMentionRepository;
-        private IChatRepository _chatRepository;
-        private IChatMemberRepository _chatMemberRepository;
-        private IMessageRepository _messageRepository;
+        // Lazy-loaded repositories
+        private IUserRepository? _userRepository;
+        private IRefreshTokenRepository? _refreshTokenRepository;
+        private IMentionRepository? _mentionRepository;
+        private IUserMentionRepository? _userMentionRepository;
+        private IChatMentionRepository? _chatMentionRepository;
+        private IChatRepository? _chatRepository;
+        private IChatMemberRepository? _chatMemberRepository;
+        private IMessageRepository? _messageRepository;
 
-        public UnitOfWork(ApplicationDbContext context)
+        public UnitOfWork(
+            ApplicationDbContext context,
+            ILogger<UnitOfWork> logger)
         {
-            _context = context;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public IUserRepository UserRepository => _userRepository ??= new UserRepository(_context);
-        public IRefreshTokenRepository RefreshTokenRepository => _refreshTokenRepository ??= new RefreshTokenRepository(_context);
-        public IMentionRepository MentionRepository => _mentionRepository ??= new MentionRepository(_context);
-        public IUserMentionRepository UserMentionRepository => _userMentionRepository ??= new UserMentionRepository(_context);
-        public IChatRepository ChatRepository => _chatRepository ??= new ChatRepository(_context);
-        public IChatMemberRepository ChatMemberRepository => _chatMemberRepository ??= new ChatMemberRepository(_context);
-        public IMessageRepository MessageRepository => _messageRepository ??= new MessageRepository(_context);
+        // Repository properties with lazy initialization
+        public IUserRepository UserRepository =>
+            _userRepository ??= new UserRepository(_context);
+
+        public IRefreshTokenRepository RefreshTokenRepository =>
+            _refreshTokenRepository ??= new RefreshTokenRepository(_context);
+
+        public IMentionRepository MentionRepository =>
+            _mentionRepository ??= new MentionRepository(_context);
+
+        public IUserMentionRepository UserMentionRepository =>
+            _userMentionRepository ??= new UserMentionRepository(_context);
+
+        public IChatMentionRepository ChatMentionRepository =>
+            _chatMentionRepository ??= new ChatMentionRepository(_context);
+
+        public IChatRepository ChatRepository =>
+            _chatRepository ??= new ChatRepository(_context);
+
+        public IChatMemberRepository ChatMemberRepository =>
+            _chatMemberRepository ??= new ChatMemberRepository(_context);
+
+        public IMessageRepository MessageRepository =>
+            _messageRepository ??= new MessageRepository(_context);
+
+        public bool HasActiveTransaction => _currentTransaction != null;
 
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
@@ -46,25 +67,29 @@ namespace Infrastructure.Repositories
             }
             catch (DbUpdateConcurrencyException ex)
             {
-                throw new InvalidOperationException("Concurrency conflict occurred", ex);
+                throw new InvalidOperationException("A concurrency conflict occurred while saving changes.", ex);
+            }
+            catch (DbUpdateException ex)
+            {
+                throw new InvalidOperationException("An error occurred while saving changes to the database.", ex);
             }
         }
 
-        public async Task BeginTransactionAsync(CancellationToken cancellationToken = default)
+        public async Task BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted, CancellationToken cancellationToken = default)
         {
             if (_currentTransaction != null)
             {
-                throw new InvalidOperationException("Transaction already started");
+                throw new InvalidOperationException("A transaction is already active. Complete the current transaction before starting a new one.");
             }
 
-            _currentTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            _currentTransaction = await _context.Database.BeginTransactionAsync(isolationLevel, cancellationToken);
         }
 
         public async Task CommitTransactionAsync(CancellationToken cancellationToken = default)
         {
             if (_currentTransaction == null)
             {
-                throw new InvalidOperationException("No active transaction to commit");
+                throw new InvalidOperationException("No active transaction to commit.");
             }
 
             try
@@ -72,7 +97,7 @@ namespace Infrastructure.Repositories
                 await SaveChangesAsync(cancellationToken);
                 await _currentTransaction.CommitAsync(cancellationToken);
             }
-            catch
+            catch (Exception)
             {
                 await RollbackTransactionAsync(cancellationToken);
                 throw;
@@ -81,16 +106,22 @@ namespace Infrastructure.Repositories
             {
                 await DisposeTransactionAsync();
             }
-
         }
 
         public async Task RollbackTransactionAsync(CancellationToken cancellationToken = default)
         {
-            if (_currentTransaction == null) return;
+            if (_currentTransaction == null)
+                return;
 
             try
             {
                 await _currentTransaction.RollbackAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Log the rollback exception but don't throw it
+                // This prevents masking the original exception that caused the rollback
+                _logger.LogError(ex, "Error during transaction rollback");
             }
             finally
             {
@@ -117,10 +148,25 @@ namespace Infrastructure.Repositories
         {
             if (!_disposed && disposing)
             {
-                _currentTransaction?.Dispose();
-                _context?.Dispose();
-                _disposed = true;
+                try
+                {
+                    _currentTransaction?.Dispose();
+                    _context?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error disposing UnitOfWork: {ex.Message}");
+                }
+                finally
+                {
+                    _disposed = true;
+                }
             }
+        }
+
+        ~UnitOfWork()
+        {
+            Dispose(false);
         }
     }
 }
