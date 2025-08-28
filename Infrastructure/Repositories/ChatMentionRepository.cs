@@ -1,5 +1,5 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Entities;
+﻿using Domain.Entities;
+using Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data;
 using System;
@@ -10,43 +10,70 @@ using System.Threading.Tasks;
 
 namespace Infrastructure.Repositories
 {
-    public class ChatMentionRepository : IChatMentionRepository
+    /// <summary>
+    /// Repository for managing chat mentions (shortname-based chat references).
+    /// Provides operations for retrieving and checking chat mentions by shortname or chat ID.
+    /// </summary>
+    public class ChatMentionRepository : BaseRepository<ChatMention>, IChatMentionRepository
     {
-        private readonly ApplicationDbContext _context;
+        public ChatMentionRepository(ApplicationDbContext context) : base(context) { }
 
-        public ChatMentionRepository(ApplicationDbContext context)
+        /// <summary>
+        /// Retrieves a chat mention by its shortname.
+        /// </summary>
+        /// <param name="shortname">The shortname to search for (case-insensitive).</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>The chat mention if found; otherwise null.</returns>
+        public async Task<ChatMention?> GetByShortnameAsync(
+            string shortname,
+            CancellationToken cancellationToken = default)
         {
-            _context = context;
+            if (string.IsNullOrWhiteSpace(shortname))
+            {
+                return null;
+            }
+
+            return await GetFilteredQuery()
+                .FirstOrDefaultAsync(
+                    cm => cm.Shortname == shortname.ToLowerInvariant(),
+                    cancellationToken);
         }
 
-        public async Task<ChatMention> AddAsync(ChatMention chatMention, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Retrieves a chat mention by the associated chat ID.
+        /// </summary>
+        /// <param name="chatId">The ID of the chat to retrieve mention for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>The chat mention if found; otherwise null.</returns>
+        public async Task<ChatMention?> GetByChatIdAsync(
+            Guid chatId,
+            CancellationToken cancellationToken = default)
         {
-            await _context.ChatMentions.AddAsync(chatMention, cancellationToken);
-            return chatMention;
+            return await GetFilteredQuery()
+                .FirstOrDefaultAsync(
+                    cm => cm.ChatId == chatId,
+                    cancellationToken);
         }
 
-        public Task<ChatMention> UpdateAsync(ChatMention chatMention, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Checks if a shortname is already in use by any chat mention.
+        /// </summary>
+        /// <param name="shortname">The shortname to check for existence.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>True if shortname exists; otherwise false.</returns>
+        public async Task<bool> ShortnameExistsAsync(
+            string shortname,
+            CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.ChatMentions.Update(chatMention);
-            return Task.FromResult(chatMention);
-        }
+            if (string.IsNullOrWhiteSpace(shortname))
+            {
+                return false;
+            }
 
-        public Task DeleteAsync(ChatMention mention, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.ChatMentions.Remove(mention);
-            return Task.CompletedTask;
-        }
-
-        public async Task<ChatMention?> GetByShortnameAsync(string shortname, CancellationToken cancellationToken = default)
-        {
-            return await _context.ChatMentions.FirstOrDefaultAsync(m => m.Shortname == shortname, cancellationToken);
-        }
-
-        public async Task<ChatMention?> GetByChatIdAsync(Guid chatId, CancellationToken cancellationToken = default)
-        {
-            return await _context.ChatMentions.FirstOrDefaultAsync(um => um.ChatId == chatId, cancellationToken);
+            return await GetFilteredQuery()
+                .AnyAsync(
+                    cm => cm.Shortname == shortname.ToLowerInvariant(),
+                    cancellationToken);
         }
     }
 }
