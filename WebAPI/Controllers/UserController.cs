@@ -1,12 +1,15 @@
-﻿using Application.CQRS.Users.Commands.UpdateShortname;
+﻿using Application.CQRS.Memberships.Queries.UserMembership;
+using Application.CQRS.Users.Commands.UpdateShortname;
 using Application.CQRS.Users.Commands.UpdateUser;
 using Application.CQRS.Users.Queries;
 using Application.CQRS.Users.Queries.Get;
+using Domain.Common;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using WebAPI.Extensions;
 using WebAPI.Models.DTOs.User;
 
 namespace WebAPI.Controllers
@@ -24,15 +27,36 @@ namespace WebAPI.Controllers
             _logger = logger;
         }
 
+
+
         /// <summary>
-        /// Gets user information by user ID
+        /// Return information about user
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Info about self user</returns>
+        [HttpGet("me")]
+        public async Task<IActionResult> GetCurrentUserAsync(CancellationToken cancellationToken)
+        {
+            var currentUserId = User.GetUserId();
+
+            return await GetUserAsync(currentUserId, cancellationToken);
+        }
+
+
+
+
+        /// <summary>
+        /// Return information about user with ID
+        /// </summary>
+        /// <param name="userId">User Id</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Info about User</returns>
         [HttpGet("{userId:guid}")]
         public async Task<IActionResult> GetUserAsync(
             Guid userId,
             CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Get user request received for user: {UserId}", userId);
+            _logger.LogInformation("Get user request recieved for user: {UserId}", userId);
 
             try
             {
@@ -51,49 +75,118 @@ namespace WebAPI.Controllers
                     if (user.IsDeleted.HasValue && user.IsDeleted.Value)
                     {
                         _logger.LogInformation("Returning deleted user info for user: {UserId}", userId);
-                        return Ok(new { IsDeleted = true, Message = "User account has been deleted" });
+                        return Ok(new 
+                        { 
+                            success = true,
+                            data = new
+                            {
+                                IsDeleted = true,
+                            },
+                            message = "User account has been deleted"
+                        });
                     }
 
                     _logger.LogInformation("User data retrieved successfully for user: {UserId}", userId);
-                    return Ok(new GetUserResponse
+                    return Ok(new
                     {
-                        Firstname = user.Firstname,
-                        Lastname = user.Lastname,
-                        Shortname = user.Shortname,
-                        Bio = user.Bio,
-                        Status = user.Status.ToString(),
-                        LastSeenAt = user.LastSeenAt
+                        success = true,
+                        data = new GetUserResponse
+                        {
+                            Firstname = user.Firstname,
+                            Lastname = user.Lastname,
+                            Shortname = user.Shortname,
+                            Bio = user.Bio,
+                            Status = user.Status.ToString(),
+                            LastSeenAt = user.LastSeenAt
+                        }
                     });
                 }
 
-                _logger.LogWarning("Get user failed for user {UserId}: {Errors}",
+                _logger.LogWarning("User information recievation failed with Id {UserId}: {Errors}",
                     userId, string.Join(", ", result.Errors.Select(e => e.Message)));
-                return NotFound(new { Errors = result.Errors.Select(e => e.Message) });
+
+                return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during get user for user: {UserId}", userId);
-                return StatusCode(500, new { Message = "An unexpected error occurred while retrieving user information" });
+                _logger.LogError(ex, "Unexpected error during get user: {UserId}", userId);
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred during get user"
+                    }
+                });
             }
         }
+
+
 
         /// <summary>
-        /// Gets current authenticated user's profile
+        /// Return user memberships
         /// </summary>
-        [HttpGet("me")]
-        public async Task<IActionResult> GetCurrentUserAsync(CancellationToken cancellationToken)
+        /// <param name="cancellationToken">Cancelation token</param>
+        /// <returns></returns>
+        [HttpGet("chats")]
+        public async Task<IActionResult> GetUserChatsAsync(
+            CancellationToken cancellationToken)
         {
-            var currentUserId = GetCurrentUserId();
-            if (!currentUserId.HasValue)
+            var currentUserId = User.GetUserId();
+
+            _logger.LogInformation("Retrieval user memberships for user: {UserId}",
+                currentUserId);
+
+            try
             {
-                _logger.LogWarning("Get current user failed - user ID not found in token");
-                return Unauthorized(new { Message = "User not authenticated" });
+                var command = new GetUserMembershipQuery
+                {
+                    UserId = currentUserId,
+                };
+
+                var result = await Mediator.Send(command, cancellationToken);
+
+                if (result.IsSuccess)
+                {
+                    var response = result.Value;
+                    _logger.LogInformation("Retrieval user memberships successfully with chat count: {ChatCount}", response.Chats.Count());
+
+                    return Ok(new
+                    {
+                        success = true,
+                        data = new
+                        {
+                            chats = response.Chats,
+                            count = response.Chats.Count()
+                        },
+                        message = "User memberships retrieved successfully"
+                    });
+                }
+
+                _logger.LogWarning("Retrieval user memberships failed for user {UserId}: {Errors}",
+                   currentUserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+
+                return HandleBusinessErrors(result.Errors);
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during retrieval user memberships for user: {UserId}", currentUserId);
 
-            _logger.LogInformation("Get current user request for user: {UserId}", currentUserId.Value);
-
-            return await GetUserAsync(currentUserId.Value, cancellationToken);
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred while retrieval user memberships"
+                    }
+                });
+            }
         }
+
+
 
         /// <summary>
         /// Updates current user's profile information
@@ -103,20 +196,15 @@ namespace WebAPI.Controllers
             [FromBody] UpdateUserRequest request,
             CancellationToken cancellationToken)
         {
-            var currentUserId = GetCurrentUserId();
-            if (!currentUserId.HasValue)
-            {
-                _logger.LogWarning("Update user failed - user ID not found in token");
-                return Unauthorized(new { Message = "User not authenticated" });
-            }
+            var currentUserId = User.GetUserId();
 
-            _logger.LogInformation("Update user request received for user: {UserId}", currentUserId.Value);
+            _logger.LogInformation("Update user request received for user: {UserId}", currentUserId);
 
             try
             {
                 var command = new UpdateUserCommand
                 {
-                    UserId = currentUserId.Value,
+                    UserId = currentUserId,
                     Firstname = request.Firstname,
                     Lastname = request.Lastname,
                     Bio = request.Bio
@@ -126,17 +214,17 @@ namespace WebAPI.Controllers
 
                 if (result.IsSuccess)
                 {
-                    _logger.LogInformation("User updated successfully for user: {UserId}", currentUserId.Value);
+                    _logger.LogInformation("User updated successfully for user: {UserId}", currentUserId);
                     return Ok(new { Message = "User profile updated successfully" });
                 }
 
                 _logger.LogWarning("Update user failed for user {UserId}: {Errors}",
-                    currentUserId.Value, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    currentUserId, string.Join(", ", result.Errors.Select(e => e.Message)));
                 return BadRequest(new { Errors = result.Errors.Select(e => e.Message) });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during update user for user: {UserId}", currentUserId.Value);
+                _logger.LogError(ex, "Unexpected error during update user for user: {UserId}", currentUserId);
                 return StatusCode(500, new { Message = "An unexpected error occurred while updating user profile" });
             }
         }
@@ -149,20 +237,15 @@ namespace WebAPI.Controllers
             [FromBody] UserUpdateShortnameRequest request,
             CancellationToken cancellationToken)
         {
-            var currentUserId = GetCurrentUserId();
-            if (!currentUserId.HasValue)
-            {
-                _logger.LogWarning("Update shortname failed - user ID not found in token");
-                return Unauthorized(new { Message = "User not authenticated" });
-            }
+            var currentUserId = User.GetUserId();
 
-            _logger.LogInformation("Update shortname request received for user: {UserId}", currentUserId.Value);
+            _logger.LogInformation("Update shortname request received for user: {UserId}", currentUserId);
 
             try
             {
                 var command = new UpdateShortnameCommand
                 {
-                    UserId = currentUserId.Value,
+                    UserId = currentUserId,
                     Shortname = request.Shortname
                 };
 
@@ -170,17 +253,17 @@ namespace WebAPI.Controllers
 
                 if (result.IsSuccess)
                 {
-                    _logger.LogInformation("Shortname updated successfully for user: {UserId}", currentUserId.Value);
+                    _logger.LogInformation("Shortname updated successfully for user: {UserId}", currentUserId);
                     return Ok(new { Message = "Shortname updated successfully" });
                 }
 
                 _logger.LogWarning("Update shortname failed for user {UserId}: {Errors}",
-                    currentUserId.Value, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    currentUserId, string.Join(", ", result.Errors.Select(e => e.Message)));
                 return BadRequest(new { Errors = result.Errors.Select(e => e.Message) });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error during update shortname for user: {UserId}", currentUserId.Value);
+                _logger.LogError(ex, "Unexpected error during update shortname for user: {UserId}", currentUserId);
                 return StatusCode(500, new { Message = "An unexpected error occurred while updating shortname" });
             }
         }
@@ -214,28 +297,6 @@ namespace WebAPI.Controllers
                 _logger.LogError(ex, "Unexpected error during user search for shortname: {Shortname}", shortname);
                 return StatusCode(500, new { Message = "An unexpected error occurred during search" });
             }
-        }
-
-        /// <summary>
-        /// Gets current user ID from JWT token claims
-        /// </summary>
-        private Guid? GetCurrentUserId()
-        {
-            var userIdClaim = User.FindFirst(JwtRegisteredClaimNames.Sid)?.Value;
-
-            if (string.IsNullOrEmpty(userIdClaim))
-            {
-                // Попробуем альтернативные claim типы
-                userIdClaim = User.FindFirst("sub")?.Value ?? User.FindFirst("userId")?.Value;
-            }
-
-            if (Guid.TryParse(userIdClaim, out var userId))
-            {
-                return userId;
-            }
-
-            _logger.LogWarning("Failed to extract user ID from token claims");
-            return null;
         }
     }
 }

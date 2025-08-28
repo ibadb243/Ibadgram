@@ -11,6 +11,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.IdentityModel.Tokens.Jwt;
 using System.Threading.Tasks;
 using WebAPI.Extensions;
 using WebAPI.Models.DTOs.Auth;
@@ -30,6 +31,37 @@ namespace WebAPI.Controllers
                 : base(mediator)
         {
             _logger = logger;
+        }
+
+
+
+
+        [HttpGet("check")]
+        public async Task<IActionResult> CheckAuthAsync(
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Check authentication");
+
+            if (User.Identity.IsAuthenticated)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        isAuthenticated = true,
+                    }
+                });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    isAuthenticated = false,
+                }
+            });
         }
 
 
@@ -488,13 +520,13 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Sets secure HTTP-only cookie for temporary token
+        /// Sets secure cookie for temporary token
         /// </summary>
         private void SetSecureTemporaryTokenCookie(string tempToken)
         {
             var cookieOptions = new CookieOptions
             {
-                HttpOnly = true,
+                HttpOnly = false,
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
                 Expires = DateTime.UtcNow.AddMinutes(60),
@@ -504,13 +536,13 @@ namespace WebAPI.Controllers
         }
 
         /// <summary>
-        /// Sets secure HTTP-only cookies for authentication tokens
+        /// Sets secure cookies for authentication tokens
         /// </summary>
         private void SetSecureTokenCookies(string accessToken, string refreshToken)
         {
             var cookieOptions = new CookieOptions
             {
-                HttpOnly = true,
+                HttpOnly = false,
                 Secure = true,
                 SameSite = SameSiteMode.Strict,
                 Expires = DateTime.UtcNow.AddDays(6),
