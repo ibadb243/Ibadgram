@@ -1,210 +1,269 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Entities;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
+﻿using Domain.Entities;
+using Domain.Repositories;
 using Infrastructure.Data;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Repositories
 {
-    public class RefreshTokenRepository : IRefreshTokenRepository
+    /// <summary>
+    /// Repository for managing refresh tokens with all token-related operations.
+    /// </summary>
+    public class RefreshTokenRepository : BaseRepository<RefreshToken>, IRefreshTokenRepository
     {
-        private readonly ApplicationDbContext _context;
+        public RefreshTokenRepository(ApplicationDbContext context) : base(context) { }
 
-        public RefreshTokenRepository(
-            ApplicationDbContext context)
+        /// <summary>
+        /// Gets a refresh token by its value.
+        /// </summary>
+        /// <param name="token">The token value to search for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>The refresh token if found; otherwise null.</returns>
+        public async Task<RefreshToken?> GetByTokenAsync(
+            string token,
+            CancellationToken cancellationToken = default)
         {
-            _context = context;
-        }
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
 
-        public async Task<RefreshToken?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            return await _context.RefreshTokens
-                .Include(rt => rt.User)
-                .FirstOrDefaultAsync(rt => rt.Id == id, cancellationToken);
-        }
-
-        public async Task<RefreshToken?> GetByTokenAsync(string token, CancellationToken cancellationToken = default)
-        {
-            return await _context.RefreshTokens
-                .Include(rt => rt.User)
+            return await GetFilteredQuery()
                 .FirstOrDefaultAsync(rt => rt.Token == token, cancellationToken);
         }
 
-        public async Task<RefreshToken> AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets all refresh tokens for a specific user.
+        /// </summary>
+        /// <param name="userId">The user ID to retrieve tokens for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>Collection of refresh tokens for the user.</returns>
+        public async Task<IEnumerable<RefreshToken>> GetUserTokensAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
         {
-            refreshToken.CreatedAtUtc = DateTime.UtcNow;
-
-            await _context.RefreshTokens.AddAsync(refreshToken);
-
-            return refreshToken;
-        }
-
-        public async Task<RefreshToken> UpdateAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default)
-        {
-            _context.RefreshTokens.Update(refreshToken);
-
-            return refreshToken;
-        }
-
-        public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            var token = await GetByIdAsync(id, cancellationToken);
-            if (token == null)
-            {
-                throw new Exception($"RefreshToken with ID {id} not found");
-            }
-
-            _context.RefreshTokens.Remove(token);
-        }
-
-        public async Task<IEnumerable<RefreshToken>> GetUserTokensAsync(Guid userId, CancellationToken cancellationToken = default)
-        {
-            return await _context.RefreshTokens
+            return await GetFilteredQuery()
                 .Where(rt => rt.UserId == userId)
-                .OrderByDescending(rt => rt.CreatedAtUtc)
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<IEnumerable<RefreshToken>> GetActiveUserTokensAsync(Guid userId, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets only active (non-revoked and non-expired) refresh tokens for a user.
+        /// </summary>
+        /// <param name="userId">The user ID to retrieve active tokens for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>Collection of active refresh tokens.</returns>
+        public async Task<IEnumerable<RefreshToken>> GetActiveUserTokensAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            return await _context.RefreshTokens
-                .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAtUtc > now)
-                .OrderByDescending(rt => rt.CreatedAtUtc)
+            return await GetFilteredQuery()
+                .Where(rt => rt.UserId == userId &&
+                    !rt.IsRevoked &&
+                    rt.ExpiresAtUtc > DateTime.UtcNow)
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<RefreshToken?> GetActiveTokenByValueAsync(string token, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets an active refresh token by its value (non-revoked and non-expired).
+        /// </summary>
+        /// <param name="token">The token value to search for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>The active refresh token if found; otherwise null.</returns>
+        public async Task<RefreshToken?> GetActiveTokenByValueAsync(
+            string token,
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            return await _context.RefreshTokens
-                .Include(rt => rt.User)
-                .FirstOrDefaultAsync(rt => rt.Token == token && !rt.IsRevoked && rt.ExpiresAtUtc > now, cancellationToken);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            return await GetFilteredQuery()
+                .FirstOrDefaultAsync(rt => rt.Token == token &&
+                    !rt.IsRevoked &&
+                    rt.ExpiresAtUtc > DateTime.UtcNow,
+                cancellationToken);
         }
 
-        public async Task RevokeTokenAsync(string token, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Revokes a specific refresh token.
+        /// </summary>
+        /// <param name="token">The token value to revoke.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        public async Task RevokeTokenAsync(
+            string token,
+            CancellationToken cancellationToken = default)
         {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return;
+            }
+
             var refreshToken = await GetByTokenAsync(token, cancellationToken);
-            if (refreshToken == null)
+            if (refreshToken != null && !refreshToken.IsRevoked)
             {
-                throw new Exception($"RefreshToke with token {token} not found");
+                refreshToken.IsRevoked = true;
+                await UpdateAsync(refreshToken, cancellationToken);
             }
-
-            if (refreshToken.IsRevoked)
-            {
-                return;
-            }
-
-            refreshToken.IsRevoked = true;
-            _context.RefreshTokens.Update(refreshToken);
         }
 
-        public async Task RevokeTokenAsync(Guid tokenId, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Revokes all refresh tokens for a specific user.
+        /// </summary>
+        /// <param name="userId">The user ID whose tokens should be revoked.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        public async Task RevokeAllUserTokensAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
         {
-            var refreshToken = await GetByIdAsync(tokenId, cancellationToken);
-            if (refreshToken == null)
-            {
-                throw new Exception($"RefreshToke with ID {tokenId} not found");
-            }
-
-            if (refreshToken.IsRevoked)
-            {
-                return;
-            }
-
-            refreshToken.IsRevoked = true;
-            _context.RefreshTokens.Update(refreshToken);
-        }
-
-        public async Task RevokeAllUserTokensAsync(Guid userId, CancellationToken cancellationToken = default)
-        {
-            var tokens = await _context.RefreshTokens
+            var tokens = await GetFilteredQuery()
                 .Where(rt => rt.UserId == userId && !rt.IsRevoked)
                 .ToListAsync(cancellationToken);
 
             foreach (var token in tokens)
             {
                 token.IsRevoked = true;
-                _context.RefreshTokens.Update(token);
+                await UpdateAsync(token, cancellationToken);
             }
         }
 
-        public async Task RevokeExpiredTokensAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Revokes all expired refresh tokens (those past their expiration date).
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        public async Task RevokeExpiredTokensAsync(
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            var expiredTokens = await _context.RefreshTokens
-                .Where(rt => !rt.IsRevoked && rt.ExpiresAtUtc <= now)
+            var expiredTokens = await GetFilteredQuery()
+                .Where(rt => rt.ExpiresAtUtc < DateTime.UtcNow && !rt.IsRevoked)
                 .ToListAsync(cancellationToken);
 
             foreach (var token in expiredTokens)
             {
                 token.IsRevoked = true;
-                _context.RefreshTokens.Update(token);
+                await UpdateAsync(token, cancellationToken);
             }
         }
 
-        public async Task<bool> IsTokenValidAsync(string token, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Checks if a refresh token is valid (exists, not revoked, and not expired).
+        /// </summary>
+        /// <param name="token">The token value to validate.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>True if token is valid; otherwise false.</returns>
+        public async Task<bool> IsTokenValidAsync(
+            string token,
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            return await _context.RefreshTokens
-                .AnyAsync(rt => rt.Token == token && !rt.IsRevoked && rt.ExpiresAtUtc > now, cancellationToken);
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            return await GetFilteredQuery()
+                .AnyAsync(rt => rt.Token == token &&
+                    !rt.IsRevoked &&
+                    rt.ExpiresAtUtc > DateTime.UtcNow,
+                cancellationToken);
         }
 
-        public async Task<bool> TokenExistsAsync(string token, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Checks if a refresh token exists in the database.
+        /// </summary>
+        /// <param name="token">The token value to check.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>True if token exists; otherwise false.</returns>
+        public async Task<bool> TokenExistsAsync(
+            string token,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.RefreshTokens
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            return await GetFilteredQuery()
                 .AnyAsync(rt => rt.Token == token, cancellationToken);
         }
 
-        public async Task CleanupExpiredTokensAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Cleans up expired refresh tokens by physically removing them from the database.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        public async Task CleanupExpiredTokensAsync(
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            var expiredTokens = await _context.RefreshTokens
-                .Where(rt => rt.ExpiresAtUtc <= now)
+            var expiredTokens = await GetFilteredQuery()
+                .Where(rt => rt.ExpiresAtUtc < DateTime.UtcNow)
                 .ToListAsync(cancellationToken);
 
-            if (expiredTokens.Any())
+            foreach (var token in expiredTokens)
             {
-                _context.RefreshTokens.RemoveRange(expiredTokens);
+                await DeleteAsync(token, cancellationToken);
             }
         }
 
-        public async Task CleanupRevokedTokensAsync(DateTime olderThan, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Cleans up revoked tokens that were created before a specific date.
+        /// </summary>
+        /// <param name="olderThan">Tokens created before this date will be cleaned up.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        public async Task CleanupRevokedTokensAsync(
+            DateTime olderThan,
+            CancellationToken cancellationToken = default)
         {
-            var revokedTokens = await _context.RefreshTokens
+            var revokedTokens = await GetFilteredQuery()
                 .Where(rt => rt.IsRevoked && rt.CreatedAtUtc < olderThan)
                 .ToListAsync(cancellationToken);
 
-            if (revokedTokens.Any())
+            foreach (var token in revokedTokens)
             {
-                _context.RefreshTokens.RemoveRange(revokedTokens);
+                await DeleteAsync(token, cancellationToken);
             }
         }
 
-        public async Task<int> GetActiveTokensCountAsync(Guid userId, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets the count of active (non-revoked and non-expired) tokens for a user.
+        /// </summary>
+        /// <param name="userId">The user ID to count tokens for.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>Number of active tokens.</returns>
+        public async Task<int> GetActiveTokensCountAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            return await _context.RefreshTokens
-                .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAtUtc > now)
-                .CountAsync(cancellationToken);
+            return await GetFilteredQuery()
+                .CountAsync(rt => rt.UserId == userId &&
+                    !rt.IsRevoked &&
+                    rt.ExpiresAtUtc > DateTime.UtcNow,
+                cancellationToken);
         }
 
-        public async Task<int> GetTotalActiveTokensCountAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets the total count of active (non-revoked and non-expired) tokens in the system.
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>Total number of active tokens.</returns>
+        public async Task<int> GetTotalActiveTokensCountAsync(
+            CancellationToken cancellationToken = default)
         {
-            var now = DateTime.UtcNow;
-            return await _context.RefreshTokens
-                .Where(rt => !rt.IsRevoked && rt.ExpiresAtUtc > now)
-                .CountAsync(cancellationToken);
+            return await GetFilteredQuery()
+                .CountAsync(rt => !rt.IsRevoked &&
+                    rt.ExpiresAtUtc > DateTime.UtcNow,
+                cancellationToken);
         }
 
-        public async Task<DateTime?> GetLastTokenCreationTimeAsync(Guid userId, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Gets the creation time of the most recent token for a user.
+        /// </summary>
+        /// <param name="userId">The user ID to check.</param>
+        /// <param name="cancellationToken">Cancellation token for async operations.</param>
+        /// <returns>Creation time of latest token or null if none exist.</returns>
+        public async Task<DateTime?> GetLastTokenCreationTimeAsync(
+            Guid userId,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.RefreshTokens
+            return await GetFilteredQuery()
                 .Where(rt => rt.UserId == userId)
                 .OrderByDescending(rt => rt.CreatedAtUtc)
                 .Select(rt => rt.CreatedAtUtc)
