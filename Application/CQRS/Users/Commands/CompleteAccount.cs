@@ -139,6 +139,8 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
 
                 await CompleteUserAccountAsync(user, request, cancellationToken);
 
+                await AddPersonalChatAsync(user, cancellationToken);
+
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
                 _logger.LogInformation("Account completion successful for user: {UserId} with username: {Username}",
@@ -283,6 +285,33 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
 
             _logger.LogDebug("Saving changes to database");
             await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task AddPersonalChatAsync(User user, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Create personal chat for user: {UserId}", user.Id);
+
+            var chat = new Chat
+            {
+                Id = Guid.NewGuid(),
+                Type = Domain.Enums.ChatType.Personal,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+
+            await _unitOfWork.ChatRepository.AddAsync(chat, cancellationToken);
+
+            _logger.LogDebug("Create member for chat: {ChatId}", chat.Id);
+
+            var member = new ChatMember
+            {
+                UserId = user.Id,
+                ChatId = chat.Id,
+                Role = Domain.Enums.ChatRole.Admin,
+            };
+
+            await _unitOfWork.ChatMemberRepository.AddAsync(member, cancellationToken);
+
+            _logger.LogInformation("Personla chat for user  created successfully");
         }
     }
 }
