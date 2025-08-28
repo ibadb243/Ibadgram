@@ -43,6 +43,15 @@ namespace WebAPI
                         policy.AllowAnyMethod();
                         policy.AllowAnyOrigin();
                     });
+
+                options
+                    .AddPolicy("LocalUI", policy =>
+                    {
+                        policy.AllowAnyHeader();
+                        policy.AllowAnyMethod();
+                        policy.WithOrigins("http://localhost:5173");
+                        policy.AllowCredentials();
+                    });
             });
 
             services.AddSwagger();
@@ -53,7 +62,7 @@ namespace WebAPI
             app.UseSwagger();
             app.UseSwaggerUI();
 
-            app.UseCors("ALL");
+            app.UseCors("LocalUI");
 
             app.UseRouting();
             app.UseHttpsRedirection();
