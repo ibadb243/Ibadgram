@@ -1,5 +1,5 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Entities;
+﻿using Domain.Entities;
+using Domain.Repositories;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Data;
@@ -11,62 +11,74 @@ using System.Threading.Tasks;
 
 namespace Infrastructure.Repositories
 {
-    public class ChatRepository : IChatRepository
+    public class ChatRepository : BaseRepository<Chat>, IChatRepository
     {
-        private readonly ApplicationDbContext _context;
+        public ChatRepository(ApplicationDbContext context) : base(context) { }
 
-        public ChatRepository(ApplicationDbContext context)
+        public async Task<IEnumerable<Chat>> GetByNameAsync(string name, int limit = 10, CancellationToken cancellationToken = default)
         {
-            _context = context;
-        }
+            if (string.IsNullOrWhiteSpace(name))
+                return Enumerable.Empty<Chat>();
 
-        public async Task<Chat> AddAsync(Chat chat, CancellationToken cancellationToken = default)
-        {
-            await _context.Chats.AddAsync(chat, cancellationToken);
-            return chat;
-        }
+            if (limit > 50) limit = 50; // Reasonable limit
 
-        public Task<Chat> UpdateAsync(Chat chat, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var entity = _context.Chats.Update(chat);
-            return Task.FromResult(entity.Entity);
-        }
-
-        public Task DeleteAsync(Chat chat, CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            _context.Chats.Remove(chat);
-            return Task.CompletedTask;
-        }
-
-        public async Task<Chat?> GetByIdAsync(Guid Id, CancellationToken cancellationToken = default)
-        {
-            return await _context.Chats
-                .Include(c => c.Mention)
-                .Include(c => c.Members)
-                .Include(c => c.Messages)
-                .FirstOrDefaultAsync(x => x.Id == Id, cancellationToken);
-        }
-
-        public async Task<List<Chat>> GetByNameAsync(string name, CancellationToken cancellationToken = default)
-        {
-            return await _context.Chats
-                .Where(c => EF.Functions.Like(c.Name, $"%{name}%"))
-                .Take(3)
-                .ToListAsync();
+            return await GetFilteredQuery()
+                .Where(c => EF.Functions.Like(c.Name, $"%{name.Trim()}%"))
+                .Take(limit)
+                .ToListAsync(cancellationToken);
         }
 
         public async Task<Chat?> FindOneToOneChatAsync(Guid userId1, Guid userId2, CancellationToken cancellationToken = default)
         {
-            return await _context.Chats
+            return await GetFilteredQuery()
                 .Include(c => c.Members)
-                .Include(c => c.Messages)
-                .Where(c => c.Type == ChatType.OneToOne)
-                .Where(c => 
-                    (c.Members[0].UserId == userId1 && c.Members[1].UserId == userId2) ||
-                    (c.Members[1].UserId == userId1 && c.Members[0].UserId == userId2))
-                .FirstOrDefaultAsync(cancellationToken);
+                .Where(c => c.Type == ChatType.OneToOne && c.Members.Count == 2)
+                .FirstOrDefaultAsync(c => c.Members.Any(m => m.UserId == userId1) &&
+                                         c.Members.Any(m => m.UserId == userId2), cancellationToken);
+        }
+
+        public async Task<Chat?> GetWithMembersAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return await GetFilteredQuery()
+                .Include(c => c.Members)
+                    .ThenInclude(m => m.User)
+                .Include(c => c.Mention)
+                .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        }
+
+        public async Task<Chat?> GetWithMessagesAsync(Guid id, int messageLimit = 50, CancellationToken cancellationToken = default)
+        {
+            if (messageLimit > 100) messageLimit = 100; // Reasonable limit
+
+            return await GetFilteredQuery()
+                .Include(c => c.Messages.OrderByDescending(m => m.CreatedAtUtc).Take(messageLimit))
+                    .ThenInclude(m => m.User)
+                .Include(c => c.Mention)
+                .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        }
+
+        public async Task<Chat?> GetWithMembersAndMessagesAsync(Guid id, int messageLimit = 50, CancellationToken cancellationToken = default)
+        {
+            if (messageLimit > 100) messageLimit = 100;
+
+            return await GetFilteredQuery()
+                .Include(c => c.Members)
+                    .ThenInclude(m => m.User)
+                .Include(c => c.Messages.OrderByDescending(m => m.CreatedAtUtc).Take(messageLimit))
+                    .ThenInclude(m => m.User)
+                .Include(c => c.Mention)
+                .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        }
+
+        public async Task<IEnumerable<Chat>> GetUserChatsAsync(Guid userId, CancellationToken cancellationToken = default)
+        {
+            return await GetFilteredQuery()
+                .Include(c => c.Members)
+                    .ThenInclude(m => m.User)
+                .Include(c => c.Mention)
+                .Where(c => c.Members.Any(m => m.UserId == userId))
+                .OrderByDescending(c => c.CreatedAtUtc)
+                .ToListAsync(cancellationToken);
         }
     }
 }
