@@ -1,15 +1,10 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Entities;
+﻿using Domain.Entities;
 using Domain.Enums;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Chats.Queries.GetGroupMembers
 {
@@ -207,8 +202,6 @@ namespace Application.CQRS.Chats.Queries.GetGroupMembers
             //    return Result.Fail("Your membership has been revoked");
             //}
 
-
-
             return Result.Ok(member);
         }
 
@@ -283,7 +276,7 @@ namespace Application.CQRS.Chats.Queries.GetGroupMembers
 
             filteredMembers = filteredMembers
                 .OrderByDescending(m => m.Role == ChatRole.Admin || m.Role == ChatRole.Creator)
-                .ThenBy(m => m.CreatedAtUtc ?? DateTime.MinValue);
+                .ThenBy(m => m.CreatedAtUtc);
 
             return filteredMembers;
         }
@@ -301,7 +294,7 @@ namespace Application.CQRS.Chats.Queries.GetGroupMembers
                 LastSeen = member.User.LastSeenAt,
                 AvatarUrl = member.User.Avatar,
                 IsDeleted = member.User.IsDeleted /*|| member.IsDeleted*/,
-                JoinedAt = member.CreatedAtUtc ?? DateTime.MinValue
+                JoinedAt = member.CreatedAtUtc
             };
         }
     }
