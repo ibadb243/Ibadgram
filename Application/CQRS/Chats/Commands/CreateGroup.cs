@@ -1,19 +1,13 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Common;
+﻿using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Chats.Commands.CreateGroup
 {
@@ -99,7 +93,7 @@ namespace Application.CQRS.Chats.Commands.CreateGroup
             _logger.LogInformation("Starting group creation process for user: {UserId}, group name: {GroupName}",
                 request.UserId, request.Name);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {

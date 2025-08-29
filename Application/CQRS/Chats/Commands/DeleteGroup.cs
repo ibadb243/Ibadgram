@@ -1,14 +1,12 @@
-﻿using Application.Interfaces.Repositories;
+﻿using Domain.Common;
+using Domain.Entities;
 using Domain.Enums;
+using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Chats.Commands.DeleteGroup
 {
@@ -24,10 +22,12 @@ namespace Application.CQRS.Chats.Commands.DeleteGroup
         {
             RuleFor(x => x.UserId)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("UserId is required");
 
             RuleFor(x => x.GroupId)
                 .NotEmpty()
+                    .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
                     .WithMessage("GroupId is required");
         }
     }
@@ -47,94 +47,50 @@ namespace Application.CQRS.Chats.Commands.DeleteGroup
 
         public async Task<Result> Handle(DeleteGroupCommand request, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Starting deleting group proccess");
+            _logger.LogInformation("Starting group deletion proccess for user: {UserId}, group: {ChatId}",
+                request.UserId, request.GroupId);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {
-                _logger.LogDebug("Retrieving user by id {UserId} from database", request.UserId);
-                var user = await _unitOfWork.UserRepository.GetByIdAsync(request.UserId, cancellationToken);
-
-                if (user == null)
+                var userResult = await GetAndValidateUserAsync(request.UserId, cancellationToken);
+                if (userResult.IsFailed)
                 {
-                    _logger.LogWarning("Delete group failed - user not found");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User not found");
+                    return userResult.ToResult();
                 }
 
-                if (!user.IsVerified)
+                var user = userResult.Value;
+
+                var chatResult = await GetAndValidateChatAsync(request.GroupId, cancellationToken);
+                if (chatResult.IsFailed)
                 {
-                    _logger.LogWarning("Delete group failed - user isn't verified");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User isn't verified");
+                    return chatResult.ToResult();
                 }
 
-                if (user.IsDeleted)
+                var chat = chatResult.Value;
+
+                var accessResult = await ValidateChatMemberAndPermissionsAsync(user.Id, chat.Id, cancellationToken);
+                if (accessResult.IsFailed)
                 {
-                    _logger.LogWarning("Delete group failed - user is deleted");
                     await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User is deleted");
+                    return accessResult;
                 }
 
-                _logger.LogDebug("Retrieving group by id {ChatId} from database", request.GroupId);
-                var group = await _unitOfWork.ChatRepository.GetByIdAsync(request.GroupId, cancellationToken);
+                await DeleteGroupAsync(chat, cancellationToken);
 
-                if (group == null)
-                {
-                    _logger.LogWarning("Delete group failed - group not found");
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Group not found");
-                }
-
-                if (group.IsDeleted)
-                {
-                    _logger.LogWarning("Delete group failed - group has already been deleted");
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("Group is deleted");
-                }
-
-                _logger.LogDebug("Retrieving member by (groupId:userId) ({ChatId}:{UserId}) from database", request.GroupId, request.UserId);
-                var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(group.Id, user.Id, cancellationToken);
-
-                if (member == null)
-                {
-                    _logger.LogWarning("Delete group failed - user with id {UserId} isn't member of group with id {ChatId}", user.Id, group.Id);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User isn't member of group");
-                }
-
-                if (member.Role != ChatRole.Creator)
-                {
-                    _logger.LogWarning("Delete group failed - user with id {UserId} isn't creator of group wiht id {ChatId}", user.Id, group.Id);
-                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                    return Result.Fail("User isn't creator of group");
-                }
-
-                _logger.LogInformation("User, Group and Member validated successfully");
-
-                if (!group.IsPrivate.Value)
-                {
-                    _logger.LogDebug("Deleting mention with id {MentionId} from database", group.Mention.Id);
-                    await _unitOfWork.MentionRepository.DeleteAsync(group.Mention.Id);
-                }
-
-                _logger.LogDebug("Deleting group with id {ChatId} from database", group.Id);
-                await _unitOfWork.ChatRepository.DeleteAsync(group, cancellationToken);
-
-                _logger.LogDebug("Saving changes to databse");
-                await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-                _logger.LogDebug("Committing transaction");
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
 
-                _logger.LogInformation("Deleting group completed successfully");
+                _logger.LogInformation("Group deleted successfully: {ChatId} by user: {UserId}",
+                    chat.Id, user.Id);
 
                 return Result.Ok();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Deleting group failed");
+                _logger.LogError(ex, "Group deletion failed for user: {UserId}", request.UserId);
 
                 try
                 {
@@ -143,11 +99,131 @@ namespace Application.CQRS.Chats.Commands.DeleteGroup
                 }
                 catch (Exception rollbackEx)
                 {
-                    _logger.LogError(rollbackEx, "Failed to rollback transaction during delete group");
+                    _logger.LogError(rollbackEx, "Failed to rollback transaction during group deletion");
                 }
 
-                throw;
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.DATABASE_ERROR,
+                    "Unable to delete group due to system error"
+                ));
             }
+        }
+
+        public async Task<Result<User>> GetAndValidateUserAsync(Guid userId, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving user by ID: {UserId}", userId);
+
+            var user = await _unitOfWork.UserRepository.GetByIdAsync(userId, cancellationToken);
+
+            if (user == null)
+            {
+                _logger.LogWarning("Group deletion failed - user not found: {UserId}", userId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_FOUND,
+                    "User not found",
+                    new { UserId = userId }
+                ));
+            }
+
+            if (!user.IsVerified)
+            {
+                _logger.LogWarning("Group deletion failed - user not verified: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_NOT_VERIFIED,
+                    "User account is not verified",
+                    new
+                    {
+                        UserId = user.Id,
+                        SuggestedAction = "Please verify your account first"
+                    }
+                ));
+            }
+
+            if (user.IsDeleted)
+            {
+                _logger.LogWarning("Group deletion failed - user is deleted: {UserId}", user.Id);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.USER_DELETED,
+                    "User account has been deleted",
+                    new { UserId = user.Id }
+                ));
+            }
+
+            _logger.LogDebug("User validation successful: {UserId}", user.Id);
+            return Result.Ok(user);
+        }
+
+        public async Task<Result<Chat>> GetAndValidateChatAsync(Guid chatId, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving chat by ID: {ChatId}", chatId);
+
+            var chat = await _unitOfWork.ChatRepository.GetByIdAsync(chatId, cancellationToken);
+
+            if (chat == null)
+            {
+                _logger.LogWarning("Group deletion failed - chat not found: {ChatId}", chatId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_NOT_FOUND,
+                    "Chat not found",
+                    new { ChatId = chatId }
+                ));
+            }
+
+            if (chat.Type == ChatType.Personal)
+            {
+                _logger.LogWarning("Group deletion failed - personal chat: {ChatId}", chatId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_ACCESS_DENIED,
+                    "Perrsonal chat couldn't be deleted",
+                    new { ChatId = chatId }
+                ));
+            }
+
+            if (chat.IsDeleted)
+            {
+                _logger.LogWarning("Group deletion failed - chat was deleted: {ChatId}", chatId);
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_NOT_FOUND,
+                    "Chat was deleted"
+                ));
+            }
+
+            _logger.LogDebug("Chat validation successful: {ChatId}", chat.Id);
+            return chat;
+        }
+
+        public async Task<Result> ValidateChatMemberAndPermissionsAsync(Guid userId, Guid chatId, CancellationToken cancellationToken)
+        {
+            _logger.LogDebug("Retrieving chat member by Ids: {ChatId} {UserId}", chatId, userId);
+
+            var member = await _unitOfWork.ChatMemberRepository.GetByIdsAsync(chatId, userId, cancellationToken);
+
+            if (member == null)
+            {
+                _logger.LogWarning("Group deletion failed - member not found");
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_ACCESS_DENIED,
+                    "You aren't member"
+                ));
+            }
+
+            if (member.Role != ChatRole.Creator)
+            {
+                _logger.LogWarning("Group deletion failed - member isn't creator");
+                return Result.Fail(new BusinessLogicError(
+                    ErrorCodes.CHAT_ACCESS_DENIED,
+                    "You hasn't access"
+                ));
+            }
+
+            return Result.Ok();
+        }
+
+        public async Task DeleteGroupAsync(Chat chat, CancellationToken cancellationToken)
+        {
+            await _unitOfWork.ChatRepository.DeleteAsync(chat, cancellationToken);
+
+            _logger.LogDebug("Group successfully was deleted");
         }
     }
 }
