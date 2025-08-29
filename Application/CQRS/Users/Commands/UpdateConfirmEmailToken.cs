@@ -4,6 +4,7 @@ using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
@@ -31,12 +32,8 @@ namespace Application.CQRS.Users.Commands.UpdateConfirmEmailToken
 
     public class UpdateConfirmEmailTokenCommandValidator : AbstractValidator<UpdateConfirmEmailTokenCommand>
     {
-        private readonly IUserRepository _userRepository;
-
-        public UpdateConfirmEmailTokenCommandValidator(IUserRepository userRepository)
+        public UpdateConfirmEmailTokenCommandValidator()
         {
-            _userRepository = userRepository;
-
             RuleFor(x => x.UserId)
                 .NotEmpty()
                     .WithErrorCode(ErrorCodes.REQUIRED_FIELD)
@@ -64,7 +61,7 @@ namespace Application.CQRS.Users.Commands.UpdateConfirmEmailToken
         {
             _logger.LogInformation("Starting email confirmation token update for user {UserId}", request.UserId);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {

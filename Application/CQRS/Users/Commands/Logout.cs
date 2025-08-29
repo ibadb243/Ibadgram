@@ -1,16 +1,10 @@
-﻿using Application.Interfaces.Repositories;
-using Domain.Common;
-using Domain.Entities;
+﻿using Domain.Common;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.Logout
 {
@@ -55,7 +49,7 @@ namespace Application.CQRS.Users.Commands.Logout
         {
             _logger.LogInformation("Starting logout proccess: {AccessToken}", request.AccessToken);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {
@@ -69,7 +63,7 @@ namespace Application.CQRS.Users.Commands.Logout
                     ));
                 }
 
-                await _unitOfWork.RefreshTokenRepository.DeleteAsync(refreshToken.Id, cancellationToken);
+                await _unitOfWork.RefreshTokenRepository.DeleteAsync(refreshToken, cancellationToken);
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);

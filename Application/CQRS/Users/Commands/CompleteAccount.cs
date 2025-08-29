@@ -1,19 +1,14 @@
-﻿using Application.Interfaces.Repositories;
-using Application.Interfaces.Services;
+﻿using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.CompleteAccount
 {
@@ -115,7 +110,7 @@ namespace Application.CQRS.Users.Commands.CompleteAccount
         {
             _logger.LogInformation("Starting account completion process for user: {UserId}", request.UserId);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {

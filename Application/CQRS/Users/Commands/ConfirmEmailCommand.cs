@@ -1,19 +1,13 @@
-﻿using Application.Interfaces.Repositories;
-using Application.Interfaces.Services;
+﻿using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.ConfirmEmail
 {
@@ -72,7 +66,7 @@ namespace Application.CQRS.Users.Commands.ConfirmEmail
         {
             _logger.LogInformation("Starting email confirmation process for user: {UserId}", request.UserId);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {

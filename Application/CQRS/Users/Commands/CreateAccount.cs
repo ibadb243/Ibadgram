@@ -1,20 +1,14 @@
-﻿using Application.CQRS.Users.Queries.Get;
-using Application.Interfaces.Repositories;
-using Application.Interfaces.Services;
+﻿using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
 using Domain.Errors;
+using Domain.Repositories;
 using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.CreateAccount
 {
@@ -111,7 +105,7 @@ namespace Application.CQRS.Users.Commands.CreateAccount
         {
             _logger.LogInformation("Starting account creation process for email: {Email}", request.Email);
 
-            await _unitOfWork.BeginTransactionAsync(cancellationToken);
+            await _unitOfWork.BeginTransactionAsync(cancellationToken: cancellationToken);
 
             try
             {
