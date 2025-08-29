@@ -20,6 +20,8 @@ namespace Domain.Common
         public const string USER_ALREADY_VERIFIED = "USER_ALREADY_VERIFIED";
         public const string USER_NOT_VERIFIED = "USER_NOT_VERIFIED";
         public const string USER_DELETED = "USER_DELETED";
+        public const string USER_MENTION_NOT_FOUND = "USER_MENTION_NOT_FOUND";
+        public const string USERNAME_UNCHANGED = "USERNAME_UNCHANGED";
         public const string INVALID_CREDENTIALS = "INVALID_CREDENTIALS";
         public const string EMAIL_ALREADY_CONFIRMED = "EMAIL_ALREADY_CONFIRMED";
         public const string EMAIL_NOT_CONFIRMED = "EMAIL_NOT_CONFIRMED";
@@ -38,6 +40,9 @@ namespace Domain.Common
         public const string CHAT_DELETED = "CHAT_DELETED";
         public const string CHAT_ACCESS_DENIED = "CHAT_ACCESS_DENIED";
         public const string REQUEST_EMTPY = "REQUEST_EMTPY";
+        public const string INVALID_RANGE = "INVALID_RANGE";
+        public const string INVALID_PARAMETERS = "INVALID_PARAMETERS";
+        public const string NO_CHANGES_DETECTED = "NO_CHANGES_DETECTED";
 
         // System errors
         public const string DATABASE_ERROR = "DATABASE_ERROR";
