@@ -1,17 +1,19 @@
 ﻿using Application.CQRS.Chats.Commands.CreateChat;
 using Application.CQRS.Chats.Commands.CreateGroup;
 using Application.CQRS.Chats.Commands.DeleteGroup;
-using Application.CQRS.Chats.Commands.MakePrivateGroup;
-using Application.CQRS.Chats.Commands.MakePublicGroup;
-using Application.CQRS.Chats.Commands.UpdateGroup;
-using Application.CQRS.Chats.Commands.UpdateShortname;
+//using Application.CQRS.Chats.Commands.MakePrivateGroup;
+//using Application.CQRS.Chats.Commands.MakePublicGroup;
+//using Application.CQRS.Chats.Commands.UpdateGroup;
+//using Application.CQRS.Chats.Commands.UpdateShortname;
 using Application.CQRS.Chats.Queries;
 using Application.CQRS.Chats.Queries.GetGroupMembers;
 using Application.CQRS.Memberships.Queries.UserMembership;
+using Application.CQRS.Messages.Queries.GetMessages;
 using Domain.Common;
 using FluentResults;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using System.IdentityModel.Tokens.Jwt;
 using WebAPI.Extensions;
@@ -32,7 +34,90 @@ namespace WebAPI.Controllers
             _logger = logger;
         }
 
-        
+
+        /// <summary>
+        /// Get chat messages
+        /// </summary>
+        /// <param name="request">Chat messages getting request</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Short chat info, pagination info and list messages</returns>
+        [HttpGet("{chatId:guid}/messages")]
+        public async Task<IActionResult> GetChatMessages(
+            [FromRoute] Guid chatId,
+            [FromQuery] GetChatMessagesRequest request,
+            CancellationToken cancellationToken)
+        {
+            var currentUserId = User.GetUserId();
+
+            _logger.LogInformation("Get chat messages request received by user: {UserId}",
+                currentUserId);
+
+            try
+            {
+                var command = new GetMessageListQuery
+                {
+                    UserId = currentUserId,
+                    ChatId = chatId,
+                    Limit = request.Limit,
+                    Offset = request.Offset,
+                };
+
+                var result = await Mediator.Send(command, cancellationToken);
+
+                if (result.IsSuccess)
+                {
+                    var response = result.Value;
+
+                    _logger.LogInformation("Chat messages gotten successfully");
+
+                    return Ok(new
+                    {
+                        success = true,
+                        data = new
+                        {
+                            chat = new
+                            {
+                                id = response.ChatInfo.ChatId,
+                                name = response.ChatInfo.ChatName,
+                            },
+                            messages = response.Messages.Select(msg => new
+                            {
+                                id = msg.MessageId,
+                                author_id = msg.UserId,
+                                author = msg.Fullname,
+                                author_nickname = msg.Nickname,
+                                text = msg.Text,
+                                timestamp = msg.Timestamp,
+                                edited = msg.IsEdited,
+                            }),
+                            total = response.Pagination.TotalCount,
+                            offset = response.Pagination.Offset,
+                            limit = response.Pagination.Limit,
+                            hasNextPage = response.Pagination.HasNextPage,
+                        }
+                    });
+                }
+
+                _logger.LogWarning("Get chat messages failed for user {UserId}: {Errors}",
+                    currentUserId, string.Join(", ", result.Errors.Select(e => e.Message)));
+
+                return HandleBusinessErrors(result.Errors);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error during get chat messages by user: {UserId}", currentUserId);
+
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = new
+                    {
+                        code = ErrorCodes.DATABASE_ERROR,
+                        message = "An unexpected error occurred while get chat messages"
+                    }
+                });
+            }
+        }
 
 
         /// <summary>
@@ -139,12 +224,15 @@ namespace WebAPI.Controllers
                         success = true,
                         data = new
                         {
-                            groupId = response.GroupId,
-                            name = response.Name,
-                            description = response.Description,
-                            isPrivate = response.IsPrivate,
-                            shortname = response.Shortname,
-                            createdAt = response.CreatedAt
+                            group = new
+                            {
+                                id = response.GroupId,
+                                name = response.Name,
+                                description = response.Description,
+                                is_public = !response.IsPrivate,
+                                shortname = response.Shortname,
+                                created = response.CreatedAt,
+                            },
                         },
                         message = "Group created successfully"
                     });

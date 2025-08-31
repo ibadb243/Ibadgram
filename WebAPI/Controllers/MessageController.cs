@@ -37,15 +37,15 @@ namespace WebAPI.Controllers
             var userId = User.GetUserId();
 
             _logger.LogInformation("Send message request received from user: {UserId} to chat: {ChatId}",
-                userId, request.ChatId);
+                userId, request.chatId);
 
             try
             {
                 var command = new SendMessageCommand
                 {
                     UserId = userId,
-                    ChatId = request.ChatId,
-                    Message = request.Message?.Trim() ?? string.Empty
+                    ChatId = request.chatId,
+                    Message = request.text?.Trim() ?? string.Empty
                 };
 
                 var result = await Mediator.Send(command, cancellationToken);
@@ -54,7 +54,7 @@ namespace WebAPI.Controllers
                 {
                     var response = result.Value;
                     _logger.LogInformation("Message sent successfully with ID: {MessageId} by user: {UserId} to chat: {ChatId}",
-                        response.Id, userId, request.ChatId);
+                        response.Id, userId, request.chatId);
 
                     return Ok(new
                     {
@@ -68,14 +68,14 @@ namespace WebAPI.Controllers
                 }
 
                 _logger.LogWarning("Send message failed for user {UserId} to chat {ChatId}: {Errors}",
-                    userId, request.ChatId, string.Join(", ", result.Errors.Select(e => e.Message)));
+                    userId, request.chatId, string.Join(", ", result.Errors.Select(e => e.Message)));
 
                 return HandleBusinessErrors(result.Errors);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error during message sending for user: {UserId} to chat: {ChatId}",
-                    userId, request.ChatId);
+                    userId, request.chatId);
 
                 return StatusCode(500, new
                 {
