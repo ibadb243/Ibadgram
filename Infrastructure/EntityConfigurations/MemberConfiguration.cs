@@ -42,8 +42,7 @@ namespace Infrastructure.EntityConfigurations
 
             // Timestamp configurations
             builder
-                .Property(x => x.CreatedAtUtc)
-                .IsRequired(false);
+                .Property(x => x.CreatedAtUtc);
 
             builder
                 .Property(x => x.UpdatedAtUtc)

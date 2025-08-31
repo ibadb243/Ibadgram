@@ -22,6 +22,7 @@ namespace Infrastructure
             services.AddScoped<IChatMemberRepository, ChatMemberRepository>();
             services.AddScoped<IMentionRepository, MentionRepository>();
             services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+            services.AddScoped<IMessageRepository, MessageRepository>();
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
 
