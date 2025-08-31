@@ -1,5 +1,4 @@
-﻿using Application.Interfaces.Repositories;
-using Application.Interfaces.Services;
+﻿using Application.Interfaces.Services;
 using Domain.Common;
 using Domain.Common.Constants;
 using Domain.Entities;
@@ -9,12 +8,7 @@ using FluentResults;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Application.CQRS.Users.Commands.UpdateConfirmEmailToken
 {
